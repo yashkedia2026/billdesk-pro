@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BillDesk Pro</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: linear-gradient(120deg, #f5f5f5, #e7eef5);
+        color: #1d1d1f;
+      }
+
+      .app-header {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(203, 213, 225, 0.6);
+      }
+
+      .app-header__inner {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+      }
+
+      .brand__title {
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        font-size: 16px;
+        color: #1d1d1f;
+      }
+
+      .container {
+        max-width: 640px;
+        margin: 32px auto;
+        padding: 32px;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      h1 {
+        margin: 0 0 16px;
+        font-size: 32px;
+      }
+
+      form {
+        display: grid;
+        gap: 16px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        font-weight: 600;
+      }
+
+      input[type="text"],
+      input[type="date"],
+      input[type="file"] {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 14px;
+      }
+
+      .date-field {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      #trade_date_display {
+        width: 100%;
+        max-width: 100%;
+        display: block;
+        cursor: pointer;
+        padding-right: 44px;
+      }
+
+      .date-icon {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        border: none;
+        background: transparent;
+        border-radius: 0;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        z-index: 3;
+      }
+
+      .date-icon:hover {
+        background: transparent;
+      }
+
+      .date-icon svg {
+        width: 18px;
+        height: 18px;
+        fill: #64748b;
+      }
+
+      #trade_date_picker {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        pointer-events: none;
+        appearance: none;
+        -webkit-appearance: none;
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+      }
+
+      #trade_date_picker::-webkit-calendar-picker-indicator {
+        opacity: 0;
+        display: none;
+      }
+
+      #trade_date_picker::-webkit-inner-spin-button,
+      #trade_date_picker::-webkit-clear-button {
+        display: none;
+      }
+
+      .date-icon:focus-visible {
+        outline: 2px solid #1f4b99;
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      button {
+        padding: 12px 16px;
+        border: none;
+        border-radius: 999px;
+        background: #1f4b99;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #173a74;
+      }
+
+      #message {
+        min-height: 20px;
+        font-weight: 600;
+      }
+
+      #message.success {
+        color: #1b7f3a;
+      }
+
+      #message.error {
+        color: #b42318;
+      }
+
+      #summary {
+        margin-top: 16px;
+        padding: 16px;
+        background: #f1f5f9;
+        border-radius: 12px;
+        font-size: 13px;
+        overflow-x: auto;
+      }
+
+      #summary[hidden] {
+        display: none;
+      }
+
+      .app-footer {
+        margin-top: 32px;
+        padding: 18px 0 26px;
+        color: #64748b;
+      }
+
+      .app-footer__inner {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 0 20px;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="app-header__inner">
+        <div class="brand__title">BillDesk Pro</div>
+      </div>
+    </header>
+    <main class="container">
+      <h1>Bill Generator</h1>
+      <form id="bill-form">
+        <label>
+          Account
+          <input type="text" name="account" placeholder="Client Name" required />
+        </label>
+        <label>
+          Trade Date
+          <input type="hidden" id="trade_date" name="trade_date" value="" />
+          <div class="date-field">
+            <input
+              type="text"
+              id="trade_date_display"
+              placeholder="DD-MM-YYYY"
+              readonly
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              class="date-icon"
+              aria-label="Open calendar"
+              title="Select date"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1.5A2.5 2.5 0 0 1 22 6.5v14A2.5 2.5 0 0 1 19.5 23h-15A2.5 2.5 0 0 1 2 20.5v-14A2.5 2.5 0 0 1 4.5 4H6V3a1 1 0 0 1 1-1Zm12.5 7H4.5v11.5c0 .276.224.5.5.5h14c.276 0 .5-.224.5-.5V9ZM5 7h14V6.5a.5.5 0 0 0-.5-.5H18v1a1 1 0 1 1-2 0V6H8v1a1 1 0 1 1-2 0V6H5.5a.5.5 0 0 0-.5.5V7Z"
+                />
+              </svg>
+            </button>
+            <input
+              type="date"
+              id="trade_date_picker"
+              aria-label="Select trade date"
+              required
+            />
+          </div>
+        </label>
+        <label>
+          Daywise CSV
+          <input type="file" name="daywise_file" accept=".csv" required />
+        </label>
+        <label>
+          Netwise CSV
+          <input type="file" name="netwise_file" accept=".csv" required />
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="debug-toggle" />
+          Debug (return JSON)
+        </label>
+        <button type="submit">Generate PDF</button>
+      </form>
+      <p id="message" role="status"></p>
+      <pre id="summary" aria-live="polite" hidden></pre>
+    </main>
+    <footer class="app-footer">
+      <div class="app-footer__inner">
+        <span>© <span id="year"></span> All rights reserved by BillDesk Pro</span>
+      </div>
+    </footer>
+
+    <script>
+      const form = document.getElementById("bill-form");
+      const messageEl = document.getElementById("message");
+      const summaryEl = document.getElementById("summary");
+      const debugToggle = document.getElementById("debug-toggle");
+      function isoToDDMMYYYY(iso) {
+        if (!iso) return "";
+        const [yyyy, mm, dd] = iso.split("-");
+        if (!yyyy || !mm || !dd) return "";
+        return `${dd}-${mm}-${yyyy}`;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const hidden = document.getElementById("trade_date");
+        const display = document.getElementById("trade_date_display");
+        const picker = document.getElementById("trade_date_picker");
+        const iconBtn = document.querySelector(".date-icon");
+
+        function openPicker() {
+          if (typeof picker.showPicker === "function") {
+            picker.showPicker();
+            return;
+          }
+          picker.focus();
+          picker.click();
+        }
+
+        display.addEventListener("click", openPicker);
+        iconBtn.addEventListener("click", openPicker);
+
+        picker.addEventListener("change", () => {
+          const iso = picker.value;
+          hidden.value = iso;
+          display.value = isoToDDMMYYYY(iso);
+        });
+
+        if (hidden.value) {
+          picker.value = hidden.value;
+          display.value = isoToDDMMYYYY(hidden.value);
+        }
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.reportValidity()) {
+          return;
+        }
+        messageEl.textContent = "";
+        messageEl.className = "";
+        summaryEl.textContent = "";
+        summaryEl.hidden = true;
+
+        const formData = new FormData(form);
+        const debug = debugToggle.checked;
+        const endpoint = debug ? "/generate?debug=true" : "/generate";
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: formData,
+          });
+
+          const contentType = response.headers.get("content-type") || "";
+
+          if (contentType.includes("application/pdf")) {
+            if (!response.ok) {
+              messageEl.textContent = "Error: PDF generation failed.";
+              messageEl.className = "error";
+              return;
+            }
+            const blob = await response.blob();
+            const filename = getFilename(response) || "bill_summary.pdf";
+            downloadBlob(blob, filename);
+            messageEl.textContent = "Success: PDF download started.";
+            messageEl.className = "success";
+            return;
+          }
+
+          const data = await response.json().catch(() => ({}));
+
+          if (response.ok) {
+            messageEl.textContent = "Success: request accepted.";
+            messageEl.className = "success";
+            summaryEl.textContent = JSON.stringify(data, null, 2);
+            summaryEl.hidden = false;
+          } else {
+            messageEl.textContent = data.error || "Error: request failed.";
+            messageEl.className = "error";
+          }
+        } catch (error) {
+          messageEl.textContent = "Error: could not reach server.";
+          messageEl.className = "error";
+        }
+      });
+
+      function getFilename(response) {
+        const header = response.headers.get("content-disposition") || "";
+        const match = /filename=\"?([^\";]+)\"?/i.exec(header);
+        return match ? match[1] : "";
+      }
+
+      function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      const yearEl = document.getElementById("year");
+      if (yearEl) {
+        yearEl.textContent = new Date().getFullYear();
+      }
+    </script>
+  </body>
+</html>

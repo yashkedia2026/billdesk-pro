@@ -1,0 +1,15 @@
+.DS_Store
+backend/.DS_Store
+**/.DS_Store
+
+# virtual envs
+.venv/
+backend/.venv/
+
+# python caches
+__pycache__/
+*.pyc
+
+# local artifacts
+*.pdf
+*.log
