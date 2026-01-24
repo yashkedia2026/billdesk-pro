@@ -389,7 +389,7 @@ def _format_amount(value: object, decimals: int = 2) -> str:
 
 def _format_qty(value: object) -> str:
     try:
-        return f"{int(round(float(value))):,}"
+        return f"{int(round(float(value)))}"
     except (TypeError, ValueError):
         return "0"
 
