@@ -12,7 +12,12 @@ from app.charges import compute_charges
 from app.pdf import build_pdf_context, render_bill_pdf
 from app.positions import build_positions, clean_df
 from app.rate_card import get_rate_card
-from app.validation import REQUIRED_COLUMNS, validate_csv_columns
+from app.validation import (
+    DAYWISE_SYNONYMS,
+    NETWISE_SYNONYMS,
+    REQUIRED_COLUMNS,
+    validate_csv_columns,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -71,8 +76,12 @@ async def generate(
         daywise_df = clean_df(daywise_df)
         netwise_df = clean_df(netwise_df)
 
-        validate_csv_columns(daywise_df, REQUIRED_COLUMNS, "Day wise")
-        validate_csv_columns(netwise_df, REQUIRED_COLUMNS, "Net wise")
+        daywise_df = validate_csv_columns(
+            daywise_df, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
+        )
+        netwise_df = validate_csv_columns(
+            netwise_df, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+        )
 
         buy_turnover = _numeric_sum(daywise_df, "Actual Buy Value")
         sell_turnover = _numeric_sum(daywise_df, "Actual Sell Value")
