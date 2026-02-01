@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pandas.errors import EmptyDataError, ParserError
 
 from app.charges import compute_charges
+from app.charges_edit import apply_user_edits, parse_json_list
 from app.pdf import build_pdf_context, render_bill_pdf
 from app.positions import build_positions, clean_df
 from app.rate_card import get_rate_card
@@ -54,6 +55,8 @@ async def generate(
     trade_date: Optional[str] = Form(None),
     daywise_file: Optional[UploadFile] = File(None),
     netwise_file: Optional[UploadFile] = File(None),
+    overrides_json: Optional[str] = Form(None),
+    additions_json: Optional[str] = Form(None),
     debug: bool = Query(False),
 ) -> Response:
     if not account:
@@ -102,6 +105,14 @@ async def generate(
     except ValueError as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
+    try:
+        overrides = parse_json_list(overrides_json, "overrides_json")
+        additions = parse_json_list(additions_json, "additions_json")
+        if overrides or additions:
+            charges = apply_user_edits(charges, overrides, additions)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
     if debug:
         response_payload = {
             "status": "parsed",
@@ -143,6 +154,59 @@ async def generate(
     filename = _safe_pdf_filename(account, trade_date)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+@app.post("/preview")
+async def preview(
+    account: Optional[str] = Form(None),
+    trade_date: Optional[str] = Form(None),
+    daywise_file: Optional[UploadFile] = File(None),
+    netwise_file: Optional[UploadFile] = File(None),
+) -> Response:
+    if not account:
+        return JSONResponse(status_code=400, content={"error": "account is required"})
+    if not trade_date:
+        return JSONResponse(status_code=400, content={"error": "trade_date is required"})
+    if daywise_file is None:
+        return JSONResponse(
+            status_code=400, content={"error": "daywise CSV file is required"}
+        )
+    if netwise_file is None:
+        return JSONResponse(
+            status_code=400, content={"error": "netwise CSV file is required"}
+        )
+
+    try:
+        daywise_df = _read_upload_csv(daywise_file, "Day wise")
+        netwise_df = _read_upload_csv(netwise_file, "Net wise")
+
+        daywise_df = clean_df(daywise_df)
+        netwise_df = clean_df(netwise_df)
+
+        daywise_df = validate_csv_columns(
+            daywise_df, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
+        )
+        netwise_df = validate_csv_columns(
+            netwise_df, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+        )
+
+        rate_card = get_rate_card()
+        charges, _ = compute_charges(daywise_df, netwise_df, rate_card, debug=False)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(exc)})
+
+    payload = {
+        "ok": True,
+        "charges": {
+            "bill_lines": charges["bill_lines"],
+            "net_amount": charges["net_amount"],
+            "total_expenses": charges["total_expenses"],
+            "total_bill_amount": charges["total_bill_amount"],
+            "gst_base": charges["gst_base"],
+            "gst_total": charges["gst_total"],
+        },
+    }
+    return JSONResponse(status_code=200, content=payload)
+
 
 
 def _safe_pdf_filename(account: str, trade_date: str) -> str:

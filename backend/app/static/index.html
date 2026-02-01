@@ -22,6 +22,10 @@
         color: #1d1d1f;
       }
 
+      body.modal-open {
+        overflow: hidden;
+      }
+
       .app-header {
         position: sticky;
         top: 0;
@@ -87,6 +91,14 @@
         border-radius: 8px;
         border: 1px solid #cbd5e1;
         font-size: 14px;
+        background: #fff;
+      }
+
+      input[type="text"]:focus-visible,
+      input[type="date"]:focus-visible,
+      input[type="file"]:focus-visible {
+        outline: 2px solid rgba(31, 75, 153, 0.25);
+        border-color: #1f4b99;
       }
 
       .date-field {
@@ -176,6 +188,73 @@
         background: #173a74;
       }
 
+      .button-secondary {
+        background: transparent;
+        color: #1f4b99;
+        border: 1px solid #cbd5e1;
+      }
+
+      .button-secondary:hover {
+        background: rgba(31, 75, 153, 0.08);
+      }
+
+      .button-danger,
+      .remove-btn {
+        background: #ef4444;
+      }
+
+      .button-danger:hover,
+      .remove-btn:hover {
+        background: #dc2626;
+      }
+
+      .remove-icon {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 10px;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        color: #64748b;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+
+      .remove-icon:hover {
+        background: rgba(180, 35, 24, 0.08);
+        border-color: rgba(180, 35, 24, 0.4);
+        color: #b42318;
+      }
+
+      .remove-icon svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+        fill: currentColor;
+      }
+
+      .additions-table th:nth-child(3),
+      .additions-table td:nth-child(3) {
+        width: 84px;
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      .additions-table td:last-child,
+      .additions-table th:last-child {
+        text-align: center;
+        vertical-align: middle;
+        width: 72px;
+      }
+
+      .additions-table td.remove-cell {
+        padding: 6px 8px;
+        text-align: center;
+        vertical-align: middle;
+      }
+
       #message {
         min-height: 20px;
         font-weight: 600;
@@ -203,6 +282,174 @@
         display: none;
       }
 
+      .button-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(6px);
+        z-index: 200;
+      }
+
+      .modal-overlay[hidden] {
+        display: none;
+      }
+
+      .modal-card {
+        width: min(820px, 100%);
+        background: #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 24px 50px rgba(15, 23, 42, 0.35);
+        display: flex;
+        flex-direction: column;
+        max-height: 90vh;
+        overflow: hidden;
+      }
+
+      .modal-header {
+        padding: 18px 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .modal-header h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .modal-close {
+        background: transparent;
+        color: #475569;
+        border: none;
+        font-size: 22px;
+        line-height: 1;
+        padding: 6px 10px;
+        border-radius: 10px;
+      }
+
+      .modal-close:hover {
+        background: rgba(148, 163, 184, 0.2);
+      }
+
+      .modal-body {
+        padding: 20px 22px 10px;
+        overflow-y: auto;
+      }
+
+      .modal-message {
+        min-height: 20px;
+        font-weight: 600;
+        white-space: pre-line;
+        margin-bottom: 12px;
+      }
+
+      .modal-message.success {
+        color: #1b7f3a;
+      }
+
+      .modal-message.error {
+        color: #b42318;
+      }
+
+      .modal-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .summary-tile {
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        display: grid;
+        gap: 6px;
+      }
+
+      .summary-label {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 600;
+      }
+
+      .summary-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+
+      .table-block {
+        margin-bottom: 16px;
+      }
+
+      .table-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .table-header h3 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .charges-table,
+      .additions-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .charges-table th,
+      .charges-table td,
+      .additions-table th,
+      .additions-table td {
+        border: 1px solid #e2e8f0;
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .charges-table th,
+      .additions-table th {
+        background: #f1f5f9;
+      }
+
+      .charges-table input,
+      .additions-table input[type="text"] {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid #cbd5e1;
+        font-size: 13px;
+      }
+
+      .amount-input {
+        text-align: right;
+      }
+
+      .modal-footer {
+        padding: 16px 22px 20px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        border-top: 1px solid #e2e8f0;
+      }
+
       .app-footer {
         margin-top: 32px;
         padding: 18px 0 26px;
@@ -218,6 +465,29 @@
         align-items: center;
         justify-content: center;
         text-align: center;
+      }
+
+      @media (max-width: 720px) {
+        .container {
+          margin: 20px 16px;
+          padding: 24px;
+        }
+
+        .modal-card {
+          width: 100%;
+          border-radius: 14px;
+        }
+
+        .modal-header,
+        .modal-body,
+        .modal-footer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .modal-footer {
+          flex-direction: column-reverse;
+        }
       }
     </style>
   </head>
@@ -277,11 +547,80 @@
           <input type="checkbox" id="debug-toggle" />
           Debug (return JSON)
         </label>
-        <button type="submit">Generate PDF</button>
+        <div class="button-row">
+          <button type="button" id="preview-btn" class="button-secondary">Preview Charges</button>
+          <button type="submit">Generate PDF</button>
+        </div>
       </form>
       <p id="message" role="status"></p>
       <pre id="summary" aria-live="polite" hidden></pre>
     </main>
+
+    <div id="charges-modal" class="modal-overlay" aria-hidden="true" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="charges-modal-title">
+        <div class="modal-header">
+          <h2 id="charges-modal-title">Charges Preview</h2>
+          <button type="button" class="modal-close" id="modal-close-icon" aria-label="Close preview">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="modal-message" class="modal-message" role="status"></div>
+          <div class="modal-summary">
+            <div class="summary-tile">
+              <span class="summary-label">Net Amount</span>
+              <span class="summary-value" id="net-amount">-</span>
+            </div>
+            <div class="summary-tile">
+              <span class="summary-label">Total Expenses</span>
+              <span class="summary-value" id="total-expenses">-</span>
+            </div>
+            <div class="summary-tile">
+              <span class="summary-label">Total Bill Amount</span>
+              <span class="summary-value" id="total-bill-amount">-</span>
+            </div>
+          </div>
+
+          <div class="table-block">
+            <div class="table-header">
+              <h3>Computed Charges</h3>
+            </div>
+            <table class="charges-table">
+              <thead>
+                <tr>
+                  <th>Charge</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="charges-body"></tbody>
+            </table>
+          </div>
+
+          <div class="table-block">
+            <div class="table-header">
+              <h3>Custom Charges</h3>
+              <button type="button" id="add-charge-btn" class="button-secondary">Add Charge</button>
+            </div>
+            <table class="additions-table">
+              <thead>
+                <tr>
+                  <th>Custom Charge</th>
+                  <th>Amount</th>
+                  <th>GST</th>
+                  <th>Remove</th>
+                </tr>
+              </thead>
+              <tbody id="additions-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="modal-close-btn" class="button-secondary">Close</button>
+          <button type="button" id="modal-generate-btn">Generate PDF</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <div class="app-footer__inner">
         <span>© <span id="year"></span> All rights reserved by BillDesk Pro</span>
@@ -293,11 +632,353 @@
       const messageEl = document.getElementById("message");
       const summaryEl = document.getElementById("summary");
       const debugToggle = document.getElementById("debug-toggle");
+      const previewBtn = document.getElementById("preview-btn");
+      const chargesBody = document.getElementById("charges-body");
+      const additionsBody = document.getElementById("additions-body");
+      const addChargeBtn = document.getElementById("add-charge-btn");
+      const netAmountEl = document.getElementById("net-amount");
+      const totalExpensesEl = document.getElementById("total-expenses");
+      const totalBillAmountEl = document.getElementById("total-bill-amount");
+      const modal = document.getElementById("charges-modal");
+      const modalMessageEl = document.getElementById("modal-message");
+      const modalGenerateBtn = document.getElementById("modal-generate-btn");
+      const modalCloseBtn = document.getElementById("modal-close-btn");
+      const modalCloseIcon = document.getElementById("modal-close-icon");
+
+      let currentCharges = null;
+      let computedLabelSet = new Set();
+      let netAmountNum = 0;
+
       function isoToDDMMYYYY(iso) {
         if (!iso) return "";
         const [yyyy, mm, dd] = iso.split("-");
         if (!yyyy || !mm || !dd) return "";
         return `${dd}-${mm}-${yyyy}`;
+      }
+
+      function normalizeName(value) {
+        return String(value || "").replace(/\s+/g, " ").trim();
+      }
+
+      function formatAmount(value, decimals) {
+        const num = Number(value);
+        if (Number.isNaN(num)) return "";
+        return num.toLocaleString("en-US", {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+      }
+
+      function parseNumber(value) {
+        if (value === null || value === undefined) return NaN;
+        const cleaned = String(value).replace(/,/g, "").trim();
+        if (!cleaned) return NaN;
+        return Number(cleaned);
+      }
+
+      function round2(value) {
+        const n = Number(value);
+        if (Number.isNaN(n)) return NaN;
+        return Math.round((n + Number.EPSILON) * 100) / 100;
+      }
+
+      function formatSignedAmount(value, decimals = 2) {
+        const n = Number(value);
+        if (Number.isNaN(n)) return "";
+        const abs = Math.abs(n);
+        const formatted = formatAmount(abs, decimals);
+        return n < 0 ? `-${formatted}` : formatted;
+      }
+
+      function setMessage(text, type) {
+        messageEl.textContent = text;
+        messageEl.className = type || "";
+      }
+
+      function clearMessage() {
+        setMessage("", "");
+      }
+
+      function setModalMessage(text, type) {
+        if (!modalMessageEl) return;
+        modalMessageEl.textContent = text;
+        modalMessageEl.className = `modal-message${type ? " " + type : ""}`;
+      }
+
+      function clearModalMessage() {
+        setModalMessage("", "");
+      }
+
+      function openModal() {
+        if (!modal) return;
+        modal.hidden = false;
+        modal.setAttribute("aria-hidden", "false");
+        document.body.classList.add("modal-open");
+      }
+
+      function closeModal() {
+        if (!modal) return;
+        modal.hidden = true;
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modal-open");
+      }
+
+      function renderChargesEditor(charges) {
+        chargesBody.innerHTML = "";
+        additionsBody.innerHTML = "";
+        computedLabelSet = new Set();
+
+        netAmountNum = Number(charges.net_amount || 0);
+        currentCharges._netAmountNum = netAmountNum;
+
+        charges.bill_lines.forEach((line) => {
+          const label = line.label || line.code || "";
+          const normalizedLabel = normalizeName(label).toLowerCase();
+          computedLabelSet.add(normalizedLabel);
+          const decimals = line.code === "STT" ? 0 : 2;
+          const absAmount = Math.abs(Number(line.amount || 0));
+
+          const row = document.createElement("tr");
+          const labelCell = document.createElement("td");
+          labelCell.textContent = label;
+          const amountCell = document.createElement("td");
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "charge-amount amount-input";
+          input.value = formatAmount(absAmount, decimals);
+          input.dataset.code = line.code || "";
+          input.dataset.original = String(absAmount);
+          input.dataset.decimals = String(decimals);
+          input.dataset.label = label;
+
+          amountCell.appendChild(input);
+          row.appendChild(labelCell);
+          row.appendChild(amountCell);
+          chargesBody.appendChild(row);
+        });
+
+        netAmountEl.textContent = formatSignedAmount(netAmountNum, 2);
+        totalExpensesEl.textContent = formatSignedAmount(charges.total_expenses || 0, 2);
+        totalBillAmountEl.textContent = formatSignedAmount(charges.total_bill_amount || 0, 2);
+
+        recomputeLiveTotals();
+      }
+
+      function addAdditionRow() {
+        const row = document.createElement("tr");
+        row.className = "addition-row";
+
+        const nameCell = document.createElement("td");
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.placeholder = "Charge name";
+        nameInput.className = "addition-name";
+        nameCell.appendChild(nameInput);
+
+        const amountCell = document.createElement("td");
+        const amountInput = document.createElement("input");
+        amountInput.type = "text";
+        amountInput.placeholder = "Amount";
+        amountInput.className = "addition-amount amount-input";
+        amountCell.appendChild(amountInput);
+
+        const gstCell = document.createElement("td");
+        const gstInput = document.createElement("input");
+        gstInput.type = "checkbox";
+        gstInput.className = "addition-gst";
+        gstCell.appendChild(gstInput);
+
+        const removeCell = document.createElement("td");
+        removeCell.className = "remove-cell";
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "remove-btn remove-icon";
+        removeBtn.setAttribute("aria-label", "Remove charge");
+        removeBtn.title = "Remove";
+        removeBtn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+            <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+          </svg>
+        `;
+        removeBtn.addEventListener("click", () => {
+          row.remove();
+          recomputeLiveTotals();
+        });
+        removeCell.appendChild(removeBtn);
+
+        row.appendChild(nameCell);
+        row.appendChild(amountCell);
+        row.appendChild(gstCell);
+        row.appendChild(removeCell);
+        additionsBody.appendChild(row);
+      }
+
+      function recomputeLiveTotals() {
+        if (!currentCharges || !modal) {
+          return;
+        }
+
+        let expensesAbs = 0;
+        const amountInputs = modal.querySelectorAll(".charge-amount");
+
+        for (const input of amountInputs) {
+          const raw = input.value.trim();
+          if (!raw) {
+            continue;
+          }
+          const num = parseNumber(raw);
+          if (Number.isNaN(num)) {
+            setModalMessage("Please enter numeric amounts for charges.", "error");
+            return;
+          }
+          expensesAbs += Math.abs(num);
+        }
+
+        const rows = modal.querySelectorAll(".addition-row");
+        for (const row of rows) {
+          const nameInput = row.querySelector(".addition-name");
+          const amountInput = row.querySelector(".addition-amount");
+          const name = normalizeName(nameInput ? nameInput.value : "");
+          const amountRaw = amountInput ? amountInput.value.trim() : "";
+
+          if (!name && !amountRaw) {
+            continue;
+          }
+          if (!name) {
+            setModalMessage("Custom charge name is required.", "error");
+            return;
+          }
+          const amount = parseNumber(amountRaw);
+          if (Number.isNaN(amount)) {
+            setModalMessage("Custom charge amount must be numeric.", "error");
+            return;
+          }
+          expensesAbs += Math.abs(amount);
+        }
+
+        const totalExpensesNum = -round2(expensesAbs);
+        const totalBillAmountNum = round2(netAmountNum + totalExpensesNum);
+
+        totalExpensesEl.textContent = formatSignedAmount(totalExpensesNum, 2);
+        totalBillAmountEl.textContent = formatSignedAmount(totalBillAmountNum, 2);
+        netAmountEl.textContent = formatSignedAmount(netAmountNum, 2);
+
+        currentCharges.total_expenses = totalExpensesNum;
+        currentCharges.total_bill_amount = totalBillAmountNum;
+
+        if (modalMessageEl && modalMessageEl.classList.contains("error")) {
+          clearModalMessage();
+        }
+      }
+
+      async function handleModalGenerate() {
+        if (!form.reportValidity()) {
+          return;
+        }
+        if (debugToggle.checked) {
+          setModalMessage("Turn off debug to generate PDF.", "error");
+          return;
+        }
+        if (!currentCharges) {
+          setModalMessage("Preview charges before generating the PDF.", "error");
+          return;
+        }
+
+        clearModalMessage();
+        clearMessage();
+        summaryEl.textContent = "";
+        summaryEl.hidden = true;
+
+        const formData = new FormData(form);
+        const overrides = [];
+        const amountInputs = modal.querySelectorAll(".charge-amount");
+
+        for (const input of amountInputs) {
+          const raw = input.value.trim();
+          if (!raw) {
+            continue;
+          }
+          const num = parseNumber(raw);
+          if (Number.isNaN(num)) {
+            setModalMessage("Please enter numeric amounts for charges.", "error");
+            return;
+          }
+          const original = parseNumber(input.dataset.original || "0");
+          if (Number.isNaN(original) || Math.abs(num - original) > 0.005) {
+            overrides.push({ code: input.dataset.code, amount: num });
+          }
+        }
+
+        const additions = [];
+        const customNames = new Set(computedLabelSet);
+        const rows = modal.querySelectorAll(".addition-row");
+
+        for (const row of rows) {
+          const nameInput = row.querySelector(".addition-name");
+          const amountInput = row.querySelector(".addition-amount");
+          const gstInput = row.querySelector(".addition-gst");
+          const name = normalizeName(nameInput.value);
+          const amountRaw = amountInput.value.trim();
+
+          if (!name && !amountRaw) {
+            continue;
+          }
+          if (!name) {
+            setModalMessage("Custom charge name is required.", "error");
+            return;
+          }
+          const amount = parseNumber(amountRaw);
+          if (Number.isNaN(amount)) {
+            setModalMessage("Custom charge amount must be numeric.", "error");
+            return;
+          }
+          const nameKey = name.toLowerCase();
+          if (customNames.has(nameKey)) {
+            setModalMessage("Charge already exists; edit it instead.", "error");
+            return;
+          }
+          customNames.add(nameKey);
+          additions.push({
+            name,
+            amount,
+            gst_applicable: Boolean(gstInput && gstInput.checked),
+          });
+        }
+
+        if (overrides.length) {
+          formData.append("overrides_json", JSON.stringify(overrides));
+        }
+        if (additions.length) {
+          formData.append("additions_json", JSON.stringify(additions));
+        }
+
+        try {
+          const response = await fetch("/generate", {
+            method: "POST",
+            body: formData,
+          });
+
+          const contentType = response.headers.get("content-type") || "";
+
+          if (contentType.includes("application/pdf")) {
+            if (!response.ok) {
+              setModalMessage("Error: PDF generation failed.", "error");
+              return;
+            }
+            const blob = await response.blob();
+            const filename = getFilename(response) || "bill_summary.pdf";
+            downloadBlob(blob, filename);
+            setModalMessage("Success: PDF download started.", "success");
+            return;
+          }
+
+          const data = await response.json().catch(() => ({}));
+          setModalMessage(data.error || "Error: request failed.", "error");
+        } catch (error) {
+          setModalMessage("Error: could not reach server.", "error");
+        }
       }
 
       document.addEventListener("DOMContentLoaded", () => {
@@ -328,6 +1009,80 @@
           picker.value = hidden.value;
           display.value = isoToDDMMYYYY(hidden.value);
         }
+
+        previewBtn.addEventListener("click", async () => {
+          if (!form.reportValidity()) {
+            return;
+          }
+          clearMessage();
+          clearModalMessage();
+          summaryEl.textContent = "";
+          summaryEl.hidden = true;
+
+          const formData = new FormData(form);
+          try {
+            const response = await fetch("/preview", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+              setMessage(data.error || "Error: preview failed.", "error");
+              return;
+            }
+            currentCharges = data.charges;
+            renderChargesEditor(currentCharges);
+            openModal();
+            setModalMessage(
+              "Preview loaded. You can edit charges before generating the PDF.",
+              "success",
+            );
+          } catch (error) {
+            setMessage("Error: could not reach server.", "error");
+          }
+        });
+
+        addChargeBtn.addEventListener("click", () => addAdditionRow());
+
+        if (modalCloseBtn) {
+          modalCloseBtn.addEventListener("click", closeModal);
+        }
+
+        if (modalCloseIcon) {
+          modalCloseIcon.addEventListener("click", closeModal);
+        }
+
+        if (modal) {
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+              closeModal();
+            }
+          });
+
+          modal.addEventListener("input", (event) => {
+            if (
+              event.target.matches(".charge-amount, .addition-name, .addition-amount")
+            ) {
+              recomputeLiveTotals();
+            }
+          });
+
+          modal.addEventListener("change", (event) => {
+            if (event.target.matches(".addition-gst")) {
+              recomputeLiveTotals();
+            }
+          });
+        }
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && modal && !modal.hidden) {
+            closeModal();
+          }
+        });
+
+        if (modalGenerateBtn) {
+          modalGenerateBtn.addEventListener("click", handleModalGenerate);
+        }
       });
 
       form.addEventListener("submit", async (event) => {
@@ -335,14 +1090,75 @@
         if (!form.reportValidity()) {
           return;
         }
-        messageEl.textContent = "";
-        messageEl.className = "";
+        clearMessage();
         summaryEl.textContent = "";
         summaryEl.hidden = true;
 
         const formData = new FormData(form);
         const debug = debugToggle.checked;
         const endpoint = debug ? "/generate?debug=true" : "/generate";
+
+        if (currentCharges && !debug) {
+          const overrides = [];
+          const amountInputs = document.querySelectorAll(".charge-amount");
+          for (const input of amountInputs) {
+            const raw = input.value.trim();
+            if (!raw) {
+              continue;
+            }
+            const num = parseNumber(raw);
+            if (Number.isNaN(num)) {
+              setMessage("Please enter numeric amounts for charges.", "error");
+              return;
+            }
+            const original = parseNumber(input.dataset.original || "0");
+            if (Number.isNaN(original) || Math.abs(num - original) > 0.005) {
+              overrides.push({ code: input.dataset.code, amount: num });
+            }
+          }
+
+          const additions = [];
+          const customNames = new Set(computedLabelSet);
+          const rows = document.querySelectorAll(".addition-row");
+          for (const row of rows) {
+            const nameInput = row.querySelector(".addition-name");
+            const amountInput = row.querySelector(".addition-amount");
+            const gstInput = row.querySelector(".addition-gst");
+            const name = normalizeName(nameInput.value);
+            const amountRaw = amountInput.value.trim();
+
+            if (!name && !amountRaw) {
+              continue;
+            }
+            if (!name) {
+              setMessage("Custom charge name is required.", "error");
+              return;
+            }
+            const amount = parseNumber(amountRaw);
+            if (Number.isNaN(amount)) {
+              setMessage("Custom charge amount must be numeric.", "error");
+              return;
+            }
+            const nameKey = name.toLowerCase();
+            if (customNames.has(nameKey)) {
+              setMessage("Charge already exists; edit it instead.", "error");
+              return;
+            }
+            customNames.add(nameKey);
+            additions.push({
+              name,
+              amount,
+              gst_applicable: Boolean(gstInput && gstInput.checked),
+            });
+          }
+
+          if (overrides.length) {
+            formData.append("overrides_json", JSON.stringify(overrides));
+          }
+          if (additions.length) {
+            formData.append("additions_json", JSON.stringify(additions));
+          }
+        }
 
         try {
           const response = await fetch(endpoint, {
@@ -354,38 +1170,33 @@
 
           if (contentType.includes("application/pdf")) {
             if (!response.ok) {
-              messageEl.textContent = "Error: PDF generation failed.";
-              messageEl.className = "error";
+              setMessage("Error: PDF generation failed.", "error");
               return;
             }
             const blob = await response.blob();
             const filename = getFilename(response) || "bill_summary.pdf";
             downloadBlob(blob, filename);
-            messageEl.textContent = "Success: PDF download started.";
-            messageEl.className = "success";
+            setMessage("Success: PDF download started.", "success");
             return;
           }
 
           const data = await response.json().catch(() => ({}));
 
           if (response.ok) {
-            messageEl.textContent = "Success: request accepted.";
-            messageEl.className = "success";
+            setMessage("Success: request accepted.", "success");
             summaryEl.textContent = JSON.stringify(data, null, 2);
             summaryEl.hidden = false;
           } else {
-            messageEl.textContent = data.error || "Error: request failed.";
-            messageEl.className = "error";
+            setMessage(data.error || "Error: request failed.", "error");
           }
         } catch (error) {
-          messageEl.textContent = "Error: could not reach server.";
-          messageEl.className = "error";
+          setMessage("Error: could not reach server.", "error");
         }
       });
 
       function getFilename(response) {
         const header = response.headers.get("content-disposition") || "";
-        const match = /filename=\"?([^\";]+)\"?/i.exec(header);
+        const match = /filename="?([^";]+)"?/i.exec(header);
         return match ? match[1] : "";
       }
 
