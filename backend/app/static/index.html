@@ -198,6 +198,21 @@
         background: rgba(31, 75, 153, 0.08);
       }
 
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      .button-secondary:disabled {
+        background: #f8fafc;
+        color: #94a3b8;
+        border-color: #e2e8f0;
+      }
+
+      .button-secondary:disabled:hover {
+        background: #f8fafc;
+      }
+
       .button-danger,
       .remove-btn {
         background: #ef4444;
@@ -286,6 +301,12 @@
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
+      }
+
+      .helper-text {
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: #64748b;
       }
 
       .modal-overlay {
@@ -472,9 +493,15 @@
     <main class="container">
       <h1>Bill Generator</h1>
       <form id="bill-form">
-        <label>
-          Account
-          <input type="text" name="account" placeholder="Client Name" required />
+        <label id="account-field">
+          <span id="account-label">Account</span>
+          <input
+            type="text"
+            id="account-input"
+            name="account"
+            placeholder="Client Name"
+            required
+          />
         </label>
         <label>
           Trade Date
@@ -507,12 +534,19 @@
             />
           </div>
         </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="admin-toggle" />
+          Admin batch mode (multiple accounts)
+        </label>
+        <p id="admin-helper" class="helper-text" hidden>
+          Generates one PDF per AccountId/UserId and downloads a ZIP.
+        </p>
         <label>
-          Daywise CSV
+          <span id="daywise-label">Daywise CSV</span>
           <input type="file" name="daywise_file" accept=".csv" required />
         </label>
         <label>
-          Netwise CSV
+          <span id="netwise-label">Netwise CSV</span>
           <input type="file" name="netwise_file" accept=".csv" required />
         </label>
         <label class="checkbox-row">
@@ -521,8 +555,11 @@
         </label>
         <div class="button-row">
           <button type="button" id="preview-btn" class="button-secondary">Preview Charges</button>
-          <button type="submit">Generate PDF</button>
+          <button type="submit" id="submit-btn">Generate PDF</button>
         </div>
+        <p id="preview-note" class="helper-text" hidden>
+          Preview is only available in single-account mode.
+        </p>
       </form>
       <p id="message" role="status"></p>
       <pre id="summary" aria-live="polite" hidden></pre>
@@ -589,8 +626,17 @@
       const form = document.getElementById("bill-form");
       const messageEl = document.getElementById("message");
       const summaryEl = document.getElementById("summary");
+      const adminToggle = document.getElementById("admin-toggle");
+      const adminHelper = document.getElementById("admin-helper");
       const debugToggle = document.getElementById("debug-toggle");
       const previewBtn = document.getElementById("preview-btn");
+      const previewNote = document.getElementById("preview-note");
+      const accountField = document.getElementById("account-field");
+      const accountInput = document.getElementById("account-input");
+      const accountLabel = document.getElementById("account-label");
+      const daywiseLabel = document.getElementById("daywise-label");
+      const netwiseLabel = document.getElementById("netwise-label");
+      const submitBtn = document.getElementById("submit-btn");
       const chargesBody = document.getElementById("charges-body");
       const additionsBody = document.getElementById("additions-body");
       const addChargeBtn = document.getElementById("add-charge-btn");
@@ -608,6 +654,10 @@
         const [yyyy, mm, dd] = iso.split("-");
         if (!yyyy || !mm || !dd) return "";
         return `${dd}-${mm}-${yyyy}`;
+      }
+
+      function isAdminMode() {
+        return Boolean(adminToggle && adminToggle.checked);
       }
 
       function normalizeName(value) {
@@ -667,6 +717,45 @@
         modal.hidden = true;
         modal.setAttribute("aria-hidden", "true");
         document.body.classList.remove("modal-open");
+      }
+
+      function applyModeUI() {
+        const adminMode = isAdminMode();
+
+        if (accountInput) {
+          accountInput.disabled = false;
+          accountInput.required = !adminMode;
+          accountInput.placeholder = adminMode ? "Broker Name" : "Client Name";
+        }
+        if (accountLabel) {
+          accountLabel.textContent = adminMode ? "Broker Name" : "Account";
+        }
+        if (daywiseLabel) {
+          daywiseLabel.textContent = adminMode ? "Admin Daywise CSV" : "Daywise CSV";
+        }
+        if (netwiseLabel) {
+          netwiseLabel.textContent = adminMode ? "Admin Netwise CSV" : "Netwise CSV";
+        }
+        if (previewBtn) {
+          previewBtn.disabled = adminMode;
+          previewBtn.title = adminMode
+            ? "Preview is only available in single-account mode."
+            : "";
+        }
+        if (previewNote) {
+          previewNote.hidden = !adminMode;
+        }
+        if (adminHelper) {
+          adminHelper.hidden = !adminMode;
+        }
+        if (submitBtn) {
+          submitBtn.textContent = adminMode ? "Generate ZIP" : "Generate PDF";
+        }
+        if (adminMode && modal && !modal.hidden) {
+          closeModal();
+          currentCharges = null;
+          computedLabelSet = new Set();
+        }
       }
 
       function renderChargesEditor(charges) {
@@ -889,6 +978,10 @@
         }
 
         previewBtn.addEventListener("click", async () => {
+          if (isAdminMode()) {
+            setMessage("Preview disabled in admin batch mode.", "error");
+            return;
+          }
           if (!form.reportValidity()) {
             return;
           }
@@ -965,6 +1058,13 @@
         if (modalGenerateBtn) {
           modalGenerateBtn.addEventListener("click", handleModalGenerate);
         }
+
+        if (adminToggle) {
+          adminToggle.addEventListener("change", () => {
+            applyModeUI();
+          });
+          applyModeUI();
+        }
       });
 
       form.addEventListener("submit", async (event) => {
@@ -978,9 +1078,11 @@
 
         const formData = new FormData(form);
         const debug = debugToggle.checked;
-        const endpoint = debug ? "/generate?debug=true" : "/generate";
+        const tradeDateValue = document.getElementById("trade_date")?.value || "";
+        const baseEndpoint = isAdminMode() ? "/generate-admin" : "/generate";
+        const endpoint = debug ? `${baseEndpoint}?debug=true` : baseEndpoint;
 
-        if (currentCharges && !debug) {
+        if (!isAdminMode() && currentCharges && !debug) {
           const overrides = [];
           const amountInputs = document.querySelectorAll(".charge-amount");
           for (const input of amountInputs) {
@@ -1050,19 +1152,33 @@
 
           const contentType = response.headers.get("content-type") || "";
 
-          if (contentType.includes("application/pdf")) {
-            if (!response.ok) {
-              setMessage("Error: PDF generation failed.", "error");
-              return;
-            }
-            const blob = await response.blob();
-            const filename = getFilename(response) || "bill_summary.pdf";
-            downloadBlob(blob, filename);
-            setMessage("Success: PDF download started.", "success");
+        if (contentType.includes("application/pdf")) {
+          if (!response.ok) {
+            setMessage("Error: PDF generation failed.", "error");
             return;
           }
+          const blob = await response.blob();
+          const filename = getFilename(response) || "bill_summary.pdf";
+          downloadBlob(blob, filename);
+          setMessage("Success: PDF download started.", "success");
+          return;
+        }
 
-          const data = await response.json().catch(() => ({}));
+        if (contentType.includes("application/zip") || getFilename(response).endsWith(".zip")) {
+          if (!response.ok) {
+            setMessage("Error: ZIP generation failed.", "error");
+            return;
+          }
+          const blob = await response.blob();
+          const filename = isAdminMode()
+            ? buildAdminZipFilename(tradeDateValue)
+            : (getFilename(response) || `Bills_${tradeDateValue}.zip`);
+          downloadBlob(blob, filename);
+          setMessage("Success: ZIP download started.", "success");
+          return;
+        }
+
+        const data = await response.json().catch(() => ({}));
 
           if (response.ok) {
             setMessage("Success: request accepted.", "success");
@@ -1080,6 +1196,19 @@
         const header = response.headers.get("content-disposition") || "";
         const match = /filename="?([^";]+)"?/i.exec(header);
         return match ? match[1] : "";
+      }
+
+      function sanitizeFilenamePart(value) {
+        const text = String(value || "").trim();
+        const sanitized = text.replace(/[^a-zA-Z0-9._-]/g, "_");
+        return sanitized || "UNKNOWN";
+      }
+
+      function buildAdminZipFilename(tradeDateValue) {
+        const brokerName = accountInput ? accountInput.value : "";
+        const safeBroker = sanitizeFilenamePart(brokerName);
+        const safeDate = sanitizeFilenamePart(tradeDateValue);
+        return `Bills_${safeBroker}_${safeDate}.zip`;
       }
 
       function downloadBlob(blob, filename) {

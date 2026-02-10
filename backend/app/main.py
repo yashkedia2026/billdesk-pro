@@ -1,4 +1,6 @@
 import io
+import json
+import zipfile
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pandas.errors import EmptyDataError, ParserError
 
+from app.admin_batch import extract_group_indices, resolve_group_columns
 from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
 from app.pdf import build_pdf_context, render_bill_pdf
@@ -155,6 +158,7 @@ async def generate(
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
+
 @app.post("/preview")
 async def preview(
     account: Optional[str] = Form(None),
@@ -207,6 +211,129 @@ async def preview(
     }
     return JSONResponse(status_code=200, content=payload)
 
+
+@app.post("/generate-admin")
+async def generate_admin(
+    trade_date: Optional[str] = Form(None),
+    daywise_file: Optional[UploadFile] = File(None),
+    netwise_file: Optional[UploadFile] = File(None),
+    debug: bool = Query(False),
+) -> Response:
+    if not trade_date:
+        return JSONResponse(status_code=400, content={"error": "trade_date is required"})
+    if daywise_file is None:
+        return JSONResponse(
+            status_code=400, content={"error": "daywise CSV file is required"}
+        )
+    if netwise_file is None:
+        return JSONResponse(
+            status_code=400, content={"error": "netwise CSV file is required"}
+        )
+
+    try:
+        daywise_df = _read_upload_csv(daywise_file, "Day wise")
+        netwise_df = _read_upload_csv(netwise_file, "Net wise")
+
+        daywise_df = clean_df(daywise_df)
+        netwise_df = clean_df(netwise_df)
+
+        resolve_group_columns(daywise_df, netwise_df)
+
+        daywise_df = validate_csv_columns(
+            daywise_df, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
+        )
+        netwise_df = validate_csv_columns(
+            netwise_df, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+        )
+
+        group_info = resolve_group_columns(daywise_df, netwise_df)
+        day_groups, net_groups, failures = extract_group_indices(
+            daywise_df,
+            netwise_df,
+            group_info["group_key"],
+            group_info["day_account_col"],
+            group_info["day_user_col"],
+            group_info["net_account_col"],
+            group_info["net_user_col"],
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    manifest = {
+        "trade_date": trade_date,
+        "group_key_used": group_info["group_key"],
+        "success": [],
+        "failed": failures,
+    }
+
+    if debug:
+        manifest["debug"] = {
+            "daywise_rows": int(daywise_df.shape[0]),
+            "netwise_rows": int(netwise_df.shape[0]),
+            "daywise_groups": len(day_groups),
+            "netwise_groups": len(net_groups),
+        }
+
+    try:
+        rate_card = get_rate_card()
+    except ValueError as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for key in day_groups:
+            if key not in net_groups:
+                manifest["failed"].append(
+                    {"key": key, "error": "Missing in netwise file."}
+                )
+                continue
+
+            day_subdf = daywise_df.loc[day_groups[key]]
+            net_subdf = netwise_df.loc[net_groups[key]]
+
+            try:
+                positions_rows, positions_totals = build_positions(day_subdf)
+                charges, _ = compute_charges(
+                    day_subdf, net_subdf, rate_card, debug=False
+                )
+                context = build_pdf_context(
+                    account=key,
+                    trade_date=trade_date,
+                    daywise_df=day_subdf,
+                    positions_rows=positions_rows,
+                    positions_totals=positions_totals,
+                    charges=charges,
+                )
+                pdf_bytes = render_bill_pdf(context)
+                filename = _safe_pdf_filename(key, trade_date)
+                zip_file.writestr(filename, pdf_bytes)
+                manifest["success"].append({"key": key, "pdf": filename})
+            except Exception as exc:
+                manifest["failed"].append(
+                    {"key": key, "error": _truncate_error(exc)}
+                )
+
+        for key in net_groups:
+            if key not in day_groups:
+                manifest["failed"].append(
+                    {"key": key, "error": "Missing in daywise file."}
+                )
+
+        zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+    zip_buffer.seek(0)
+    safe_trade_date = _sanitize_filename_part(trade_date)
+    zip_name = f"Bills_{safe_trade_date}.zip"
+    headers = {"Content-Disposition": f'attachment; filename="{zip_name}"'}
+    return Response(content=zip_buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+def _truncate_error(exc: Exception, limit: int = 300) -> str:
+    message = str(exc)
+    if len(message) <= limit:
+        return message
+    return message[: limit - 3] + "..."
 
 
 def _safe_pdf_filename(account: str, trade_date: str) -> str:
