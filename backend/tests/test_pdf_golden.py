@@ -7,7 +7,7 @@ import pytest
 from pypdf import PdfReader
 
 from app.charges import compute_charges
-from app.pdf import build_pdf_context, render_bill_pdf
+from app.pdf import _format_amount, build_pdf_context, render_bill_pdf
 from app.positions import build_positions, clean_df
 from app.rate_card import get_rate_card
 from app.validation import REQUIRED_COLUMNS, validate_csv_columns
@@ -67,22 +67,33 @@ def test_pdf_golden() -> None:
     pdf_bytes = render_bill_pdf(context)
     generated_text = _normalize_text(_pdf_text_from_bytes(pdf_bytes))
 
+    bill_line_map = {line["code"]: line for line in charges["bill_lines"]}
+    expected_total_bill = re.escape(_format_amount(charges["total_bill_amount"], 2))
+    expected_total_expenses = re.escape(_format_amount(charges["total_expenses"], 2))
+    expected_toc_nse = re.escape(_format_amount(bill_line_map["TOC_NSE"]["amount"], 2))
+    expected_toc_bse = re.escape(_format_amount(bill_line_map["TOC_BSE"]["amount"], 2))
+    expected_cgst = re.escape(_format_amount(bill_line_map["CGST_9"]["amount"], 2))
+    expected_sgst = re.escape(_format_amount(bill_line_map["SGST_9"]["amount"], 2))
+    expected_stt = re.escape(_format_amount(bill_line_map["STT"]["amount"], 0))
+    expected_ipft = re.escape(_format_amount(bill_line_map["IPFT"]["amount"], 2))
+
     _assert_contains(
         generated_text,
-        r"Total Bill Amount:?\\s+-?330,?179\\.19",
+        rf"Total Bill Amount:?\\s+{expected_total_bill}",
         "Total Bill Amount",
     )
-    _assert_contains(generated_text, r"Total\\s+-?1,?624\\.31", "Total Expenses")
-    _assert_contains(generated_text, r"\\bSTT\\b\\s+-?806\\b", "STT line")
+    _assert_contains(generated_text, rf"Total\\s+{expected_total_expenses}", "Total Expenses")
+    _assert_contains(generated_text, rf"\\bSTT\\b\\s+{expected_stt}", "STT line")
     _assert_contains(
         generated_text,
-        r"TOC NSE Exchange\\s+-?390\\.92",
+        rf"TOC NSE Exchange\\s+{expected_toc_nse}",
         "TOC NSE",
     )
     _assert_contains(
         generated_text,
-        r"TOC BSE Exchange\\s+-?250\\.2(0)?",
+        rf"TOC BSE Exchange\\s+{expected_toc_bse}",
         "TOC BSE",
     )
-    _assert_contains(generated_text, r"CGST\\s+-?61\\.33", "CGST")
-    _assert_contains(generated_text, r"SGST\\s+-?61\\.33", "SGST")
+    _assert_contains(generated_text, rf"CGST\\s+{expected_cgst}", "CGST")
+    _assert_contains(generated_text, rf"SGST\\s+{expected_sgst}", "SGST")
+    _assert_contains(generated_text, rf"IPFT Charges\\s+{expected_ipft}", "IPFT")

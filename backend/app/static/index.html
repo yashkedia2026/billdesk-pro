@@ -362,34 +362,6 @@
         color: #b42318;
       }
 
-      .modal-summary {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-
-      .summary-tile {
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        display: grid;
-        gap: 6px;
-      }
-
-      .summary-label {
-        font-size: 12px;
-        color: #64748b;
-        font-weight: 600;
-      }
-
-      .summary-value {
-        font-size: 18px;
-        font-weight: 700;
-        color: #0f172a;
-      }
-
       .table-block {
         margin-bottom: 16px;
       }
@@ -566,20 +538,6 @@
         </div>
         <div class="modal-body">
           <div id="modal-message" class="modal-message" role="status"></div>
-          <div class="modal-summary">
-            <div class="summary-tile">
-              <span class="summary-label">Net Amount</span>
-              <span class="summary-value" id="net-amount">-</span>
-            </div>
-            <div class="summary-tile">
-              <span class="summary-label">Total Expenses</span>
-              <span class="summary-value" id="total-expenses">-</span>
-            </div>
-            <div class="summary-tile">
-              <span class="summary-label">Total Bill Amount</span>
-              <span class="summary-value" id="total-bill-amount">-</span>
-            </div>
-          </div>
 
           <div class="table-block">
             <div class="table-header">
@@ -636,9 +594,6 @@
       const chargesBody = document.getElementById("charges-body");
       const additionsBody = document.getElementById("additions-body");
       const addChargeBtn = document.getElementById("add-charge-btn");
-      const netAmountEl = document.getElementById("net-amount");
-      const totalExpensesEl = document.getElementById("total-expenses");
-      const totalBillAmountEl = document.getElementById("total-bill-amount");
       const modal = document.getElementById("charges-modal");
       const modalMessageEl = document.getElementById("modal-message");
       const modalGenerateBtn = document.getElementById("modal-generate-btn");
@@ -647,7 +602,6 @@
 
       let currentCharges = null;
       let computedLabelSet = new Set();
-      let netAmountNum = 0;
 
       function isoToDDMMYYYY(iso) {
         if (!iso) return "";
@@ -680,14 +634,6 @@
         const n = Number(value);
         if (Number.isNaN(n)) return NaN;
         return Math.round((n + Number.EPSILON) * 100) / 100;
-      }
-
-      function formatSignedAmount(value, decimals = 2) {
-        const n = Number(value);
-        if (Number.isNaN(n)) return "";
-        const abs = Math.abs(n);
-        const formatted = formatAmount(abs, decimals);
-        return n < 0 ? `-${formatted}` : formatted;
       }
 
       function setMessage(text, type) {
@@ -728,9 +674,6 @@
         additionsBody.innerHTML = "";
         computedLabelSet = new Set();
 
-        netAmountNum = Number(charges.net_amount || 0);
-        currentCharges._netAmountNum = netAmountNum;
-
         charges.bill_lines.forEach((line) => {
           const label = line.label || line.code || "";
           const normalizedLabel = normalizeName(label).toLowerCase();
@@ -757,12 +700,6 @@
           row.appendChild(amountCell);
           chargesBody.appendChild(row);
         });
-
-        netAmountEl.textContent = formatSignedAmount(netAmountNum, 2);
-        totalExpensesEl.textContent = formatSignedAmount(charges.total_expenses || 0, 2);
-        totalBillAmountEl.textContent = formatSignedAmount(charges.total_bill_amount || 0, 2);
-
-        recomputeLiveTotals();
       }
 
       function addAdditionRow() {
@@ -804,7 +741,6 @@
         `;
         removeBtn.addEventListener("click", () => {
           row.remove();
-          recomputeLiveTotals();
         });
         removeCell.appendChild(removeBtn);
 
@@ -813,64 +749,6 @@
         row.appendChild(gstCell);
         row.appendChild(removeCell);
         additionsBody.appendChild(row);
-      }
-
-      function recomputeLiveTotals() {
-        if (!currentCharges || !modal) {
-          return;
-        }
-
-        let expensesAbs = 0;
-        const amountInputs = modal.querySelectorAll(".charge-amount");
-
-        for (const input of amountInputs) {
-          const raw = input.value.trim();
-          if (!raw) {
-            continue;
-          }
-          const num = parseNumber(raw);
-          if (Number.isNaN(num)) {
-            setModalMessage("Please enter numeric amounts for charges.", "error");
-            return;
-          }
-          expensesAbs += Math.abs(num);
-        }
-
-        const rows = modal.querySelectorAll(".addition-row");
-        for (const row of rows) {
-          const nameInput = row.querySelector(".addition-name");
-          const amountInput = row.querySelector(".addition-amount");
-          const name = normalizeName(nameInput ? nameInput.value : "");
-          const amountRaw = amountInput ? amountInput.value.trim() : "";
-
-          if (!name && !amountRaw) {
-            continue;
-          }
-          if (!name) {
-            setModalMessage("Custom charge name is required.", "error");
-            return;
-          }
-          const amount = parseNumber(amountRaw);
-          if (Number.isNaN(amount)) {
-            setModalMessage("Custom charge amount must be numeric.", "error");
-            return;
-          }
-          expensesAbs += Math.abs(amount);
-        }
-
-        const totalExpensesNum = -round2(expensesAbs);
-        const totalBillAmountNum = round2(netAmountNum + totalExpensesNum);
-
-        totalExpensesEl.textContent = formatSignedAmount(totalExpensesNum, 2);
-        totalBillAmountEl.textContent = formatSignedAmount(totalBillAmountNum, 2);
-        netAmountEl.textContent = formatSignedAmount(netAmountNum, 2);
-
-        currentCharges.total_expenses = totalExpensesNum;
-        currentCharges.total_bill_amount = totalBillAmountNum;
-
-        if (modalMessageEl && modalMessageEl.classList.contains("error")) {
-          clearModalMessage();
-        }
       }
 
       async function handleModalGenerate() {
@@ -1063,13 +941,17 @@
             if (
               event.target.matches(".charge-amount, .addition-name, .addition-amount")
             ) {
-              recomputeLiveTotals();
+              if (modalMessageEl && modalMessageEl.classList.contains("error")) {
+                clearModalMessage();
+              }
             }
           });
 
           modal.addEventListener("change", (event) => {
             if (event.target.matches(".addition-gst")) {
-              recomputeLiveTotals();
+              if (modalMessageEl && modalMessageEl.classList.contains("error")) {
+                clearModalMessage();
+              }
             }
           });
         }

@@ -38,6 +38,22 @@ def compute_charges(
     nfo_amounts = _segment_amounts(segment_bases["NFO"], rules_map, nfo_rule_keys)
     bfo_amounts = _segment_amounts(segment_bases["BFO"], rules_map, bfo_rule_keys)
 
+    total_futures_turnover = (
+        segment_bases["NFO"]["futures_buy"]
+        + segment_bases["NFO"]["futures_sell"]
+        + segment_bases["BFO"]["futures_buy"]
+        + segment_bases["BFO"]["futures_sell"]
+    )
+    total_options_turnover = (
+        segment_bases["NFO"]["options_buy"]
+        + segment_bases["NFO"]["options_sell"]
+        + segment_bases["BFO"]["options_buy"]
+        + segment_bases["BFO"]["options_sell"]
+    )
+    ipft_amount = _apply_rates(
+        total_futures_turnover, total_options_turnover, rules_map.get("IPFT")
+    )
+
     _validate_toc_rates("NFO", segment_bases["NFO"], rules_map.get("NSE_TURNOVER"))
     _validate_toc_rates("BFO", segment_bases["BFO"], rules_map.get("BSE_TURNOVER"))
 
@@ -66,6 +82,7 @@ def compute_charges(
     add_line("BFO_CLEARING", "BFO Clearing Charges", bfo_amounts["clearing"], True)
     add_line("NFO_SEBI", "NFO SEBI Fees", nfo_amounts["sebi"], True)
     add_line("BFO_SEBI", "BFO SEBI Fees", bfo_amounts["sebi"], True)
+    add_line("IPFT", "IPFT Charges", ipft_amount, True)
     add_line("NFO_STT_SELL", "NFO STT (Sell)", nfo_amounts["stt"], False)
     add_line("BFO_STT_SELL", "BFO STT (Sell)", bfo_amounts["stt"], False)
     add_line("NFO_STAMP_DUTY", "NFO Stamp Duty", nfo_amounts["stamp"], False)
@@ -93,6 +110,7 @@ def compute_charges(
     raw_clearing = abs(nfo_amounts["clearing"]) + abs(bfo_amounts["clearing"])
     raw_sebi = abs(nfo_amounts["sebi"]) + abs(bfo_amounts["sebi"])
     raw_stamp = abs(nfo_amounts["stamp"]) + abs(bfo_amounts["stamp"])
+    raw_ipft = abs(ipft_amount)
     raw_stt = (
         abs(nfo_amounts["stt"])
         + abs(bfo_amounts["stt"])
@@ -103,9 +121,10 @@ def compute_charges(
     clearing_total = _round_to(raw_clearing, 2)
     sebi_total = _round_to(raw_sebi, 2)
     stamp_total = _round_to(raw_stamp, 2)
+    ipft_total = _round_to(raw_ipft, 2)
     stt_total = _round_to(raw_stt, 0)
 
-    gst_base = _round2(toc_nse + toc_bse + clearing_total + sebi_total)
+    gst_base = _round2(toc_nse + toc_bse + clearing_total + sebi_total + ipft_total)
     cgst = _round2(gst_base * 0.09)
     sgst = _round2(gst_base * 0.09)
     gst_total = _round2(cgst + sgst)
@@ -120,6 +139,7 @@ def compute_charges(
         _bill_line("TOC_BSE", "TOC BSE Exchange", toc_bse),
         _bill_line("CLEARING", "Clearing Charges", clearing_total),
         _bill_line("SEBI", "SEBI Fees", sebi_total),
+        _bill_line("IPFT", "IPFT Charges", ipft_total),
         _bill_line("STT", "STT", stt_total),
         _bill_line("STAMP_DUTY", "Stamp Duty", stamp_total),
         _bill_line("CGST_9", "CGST @ 9%", cgst),
@@ -155,6 +175,7 @@ def compute_charges(
                     "raw": {
                         "clearing": _round6(raw_clearing),
                         "sebi": _round6(raw_sebi),
+                        "ipft": _round6(raw_ipft),
                         "stt": _round6(raw_stt),
                         "stamp": _round6(raw_stamp),
                     },
@@ -163,6 +184,7 @@ def compute_charges(
                         "toc_bse": toc_bse,
                         "clearing": clearing_total,
                         "sebi": sebi_total,
+                        "ipft": ipft_total,
                         "stt": stt_total,
                         "stamp": stamp_total,
                     },

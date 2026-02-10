@@ -96,7 +96,7 @@ def apply_user_edits(
     return updated
 
 
-GST_APPLICABLE_CODES = {"TOC_NSE", "TOC_BSE", "CLEARING", "SEBI"}
+GST_APPLICABLE_CODES = {"TOC_NSE", "TOC_BSE", "CLEARING", "SEBI", "IPFT"}
 
 
 def _gst_base_from_lines(
