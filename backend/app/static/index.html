@@ -482,6 +482,40 @@
           flex-direction: column-reverse;
         }
       }
+
+      @media (max-width: 750px) {
+        .container {
+          margin: 16px 12px;
+          padding: 20px;
+          border-radius: 14px;
+        }
+
+        h1 {
+          font-size: 28px;
+        }
+
+        form {
+          gap: 14px;
+        }
+
+        .button-row {
+          flex-direction: column;
+        }
+
+        .button-row button {
+          width: 100%;
+        }
+
+        .date-icon,
+        #trade_date_picker {
+          display: none;
+        }
+
+        #trade_date_display {
+          padding-right: 12px;
+          cursor: text;
+        }
+      }
     </style>
   </head>
   <body>
@@ -646,6 +680,10 @@
       const modalCloseBtn = document.getElementById("modal-close-btn");
       const modalCloseIcon = document.getElementById("modal-close-icon");
 
+      let tradeDateHidden = null;
+      let tradeDateDisplay = null;
+      let tradeDatePicker = null;
+      let dateMediaQuery = null;
       let currentCharges = null;
       let computedLabelSet = new Set();
 
@@ -654,6 +692,97 @@
         const [yyyy, mm, dd] = iso.split("-");
         if (!yyyy || !mm || !dd) return "";
         return `${dd}-${mm}-${yyyy}`;
+      }
+
+      function isSmallScreen() {
+        return Boolean(dateMediaQuery && dateMediaQuery.matches);
+      }
+
+      function formatDisplayDate(value) {
+        const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+        const parts = [];
+        if (digits.length >= 2) {
+          parts.push(digits.slice(0, 2));
+        } else if (digits.length > 0) {
+          parts.push(digits);
+        }
+        if (digits.length >= 4) {
+          parts.push(digits.slice(2, 4));
+        } else if (digits.length > 2) {
+          parts.push(digits.slice(2));
+        }
+        if (digits.length > 4) {
+          parts.push(digits.slice(4));
+        }
+        return parts.join("-");
+      }
+
+      function toIsoFromDisplay(value) {
+        const [dd, mm, yyyy] = String(value || "").split("-");
+        if (!dd || !mm || !yyyy) return "";
+        if (dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return "";
+        const day = Number(dd);
+        const month = Number(mm);
+        const year = Number(yyyy);
+        if (!day || !month || !year) return "";
+        const date = new Date(year, month - 1, day);
+        if (
+          date.getFullYear() !== year ||
+          date.getMonth() !== month - 1 ||
+          date.getDate() !== day
+        ) {
+          return "";
+        }
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      function syncMobileDate() {
+        if (!isSmallScreen() || !tradeDateDisplay || !tradeDateHidden) {
+          return true;
+        }
+        const formatted = formatDisplayDate(tradeDateDisplay.value);
+        if (tradeDateDisplay.value !== formatted) {
+          tradeDateDisplay.value = formatted;
+        }
+        if (!formatted) {
+          tradeDateHidden.value = "";
+          tradeDateDisplay.setCustomValidity("");
+          return false;
+        }
+        if (formatted.length < 10) {
+          tradeDateHidden.value = "";
+          tradeDateDisplay.setCustomValidity("");
+          return false;
+        }
+        const iso = toIsoFromDisplay(formatted);
+        if (!iso) {
+          tradeDateHidden.value = "";
+          tradeDateDisplay.setCustomValidity("Enter a valid date in DD-MM-YYYY.");
+          return false;
+        }
+        tradeDateHidden.value = iso;
+        tradeDateDisplay.setCustomValidity("");
+        return true;
+      }
+
+      function applyDateMode() {
+        if (!tradeDateDisplay || !tradeDatePicker) return;
+        if (isSmallScreen()) {
+          tradeDateDisplay.readOnly = false;
+          tradeDateDisplay.required = true;
+          tradeDateDisplay.inputMode = "numeric";
+          tradeDateDisplay.pattern = "\\d{2}-\\d{2}-\\d{4}";
+          tradeDatePicker.disabled = true;
+          tradeDatePicker.required = false;
+          syncMobileDate();
+        } else {
+          tradeDateDisplay.readOnly = true;
+          tradeDateDisplay.required = false;
+          tradeDateDisplay.removeAttribute("inputmode");
+          tradeDateDisplay.removeAttribute("pattern");
+          tradeDatePicker.disabled = false;
+          tradeDatePicker.required = true;
+        }
       }
 
       function isAdminMode() {
@@ -841,6 +970,7 @@
       }
 
       async function handleModalGenerate() {
+        syncMobileDate();
         if (!form.reportValidity()) {
           return;
         }
@@ -949,32 +1079,57 @@
       }
 
       document.addEventListener("DOMContentLoaded", () => {
-        const hidden = document.getElementById("trade_date");
-        const display = document.getElementById("trade_date_display");
-        const picker = document.getElementById("trade_date_picker");
+        tradeDateHidden = document.getElementById("trade_date");
+        tradeDateDisplay = document.getElementById("trade_date_display");
+        tradeDatePicker = document.getElementById("trade_date_picker");
         const iconBtn = document.querySelector(".date-icon");
+        dateMediaQuery = window.matchMedia("(max-width: 750px)");
 
         function openPicker() {
-          if (typeof picker.showPicker === "function") {
-            picker.showPicker();
+          if (isSmallScreen()) {
             return;
           }
-          picker.focus();
-          picker.click();
+          if (tradeDatePicker && typeof tradeDatePicker.showPicker === "function") {
+            tradeDatePicker.showPicker();
+            return;
+          }
+          if (tradeDatePicker) {
+            tradeDatePicker.focus();
+            tradeDatePicker.click();
+          }
         }
 
-        display.addEventListener("click", openPicker);
+        tradeDateDisplay.addEventListener("click", openPicker);
         iconBtn.addEventListener("click", openPicker);
 
-        picker.addEventListener("change", () => {
-          const iso = picker.value;
-          hidden.value = iso;
-          display.value = isoToDDMMYYYY(iso);
+        tradeDatePicker.addEventListener("change", () => {
+          const iso = tradeDatePicker.value;
+          tradeDateHidden.value = iso;
+          tradeDateDisplay.value = isoToDDMMYYYY(iso);
         });
 
-        if (hidden.value) {
-          picker.value = hidden.value;
-          display.value = isoToDDMMYYYY(hidden.value);
+        tradeDateDisplay.addEventListener("input", () => {
+          if (isSmallScreen()) {
+            syncMobileDate();
+          }
+        });
+
+        tradeDateDisplay.addEventListener("blur", () => {
+          if (isSmallScreen()) {
+            syncMobileDate();
+          }
+        });
+
+        if (tradeDateHidden.value) {
+          tradeDatePicker.value = tradeDateHidden.value;
+          tradeDateDisplay.value = isoToDDMMYYYY(tradeDateHidden.value);
+        }
+
+        applyDateMode();
+        if (dateMediaQuery) {
+          dateMediaQuery.addEventListener("change", () => {
+            applyDateMode();
+          });
         }
 
         previewBtn.addEventListener("click", async () => {
@@ -982,6 +1137,7 @@
             setMessage("Preview disabled in admin batch mode.", "error");
             return;
           }
+          syncMobileDate();
           if (!form.reportValidity()) {
             return;
           }
@@ -1069,6 +1225,7 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        syncMobileDate();
         if (!form.reportValidity()) {
           return;
         }
