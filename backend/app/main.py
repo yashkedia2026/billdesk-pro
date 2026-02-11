@@ -2,7 +2,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 from fastapi import FastAPI, File, Form, Query, UploadFile
@@ -10,10 +10,25 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pandas.errors import EmptyDataError, ParserError
 
-from app.admin_batch import extract_group_indices, netwise_only_keys, resolve_group_columns
+from app.admin_batch import (
+    ACCOUNT_ID_SYNONYMS,
+    USER_ID_SYNONYMS,
+    extract_group_indices,
+    find_column,
+    netwise_only_keys,
+    resolve_group_columns,
+)
 from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
-from app.pdf import build_pdf_context, render_bill_pdf
+from app.closing_positions import build_closing_positions
+from app.pdf import (
+    build_pdf_context,
+    merge_pdf_documents,
+    render_admin_consolidated_pdf,
+    render_admin_summary_pdf,
+    render_bill_pdf,
+    render_closing_positions_pdf,
+)
 from app.positions import build_positions, clean_df
 from app.rate_card import get_rate_card
 from app.validation import (
@@ -97,6 +112,9 @@ async def generate(
         nonzero_netqty_rows = int((net_qty != 0).sum())
 
         positions_rows, positions_totals = build_positions(daywise_df)
+        closing_rows, closing_total, closing_status = build_closing_positions(
+            netwise_df, trade_date
+        )
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
@@ -134,6 +152,11 @@ async def generate(
                 "nonzero_netqty_rows": nonzero_netqty_rows,
             },
             "positions": {"rows": positions_rows, "totals": positions_totals},
+            "closing_positions": {
+                "status": closing_status,
+                "rows": closing_rows,
+                "total_value": closing_total,
+            },
             "rate_card": {
                 "source": rate_card["source"],
                 "rules_count": len(rate_card["rules"]),
@@ -153,7 +176,19 @@ async def generate(
         positions_totals=positions_totals,
         charges=charges,
     )
-    pdf_bytes = render_bill_pdf(context)
+    account_meta = {
+        "account_code": account,
+        "account_name": account,
+        "trade_date": trade_date,
+    }
+    bill_pdf_bytes = render_bill_pdf(context)
+    closing_pdf_bytes = render_closing_positions_pdf(
+        account_meta,
+        closing_rows,
+        closing_total,
+        closing_status,
+    )
+    pdf_bytes = merge_pdf_documents([bill_pdf_bytes, closing_pdf_bytes])
     filename = _safe_pdf_filename(account, trade_date)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
@@ -225,26 +260,46 @@ async def generate_admin(
         return JSONResponse(
             status_code=400, content={"error": "daywise CSV file is required"}
         )
-    if netwise_file is None:
-        return JSONResponse(
-            status_code=400, content={"error": "netwise CSV file is required"}
-        )
+
+    netwise_warnings: List[str] = []
 
     try:
-        daywise_raw = _read_upload_csv(daywise_file, "Day wise")
-        netwise_raw = _read_upload_csv(netwise_file, "Net wise")
-
-        daywise_raw = _drop_unnamed_columns(daywise_raw)
-        netwise_raw = _drop_unnamed_columns(netwise_raw)
-
+        daywise_raw = _drop_unnamed_columns(_read_upload_csv(daywise_file, "Day wise"))
         daywise_df = validate_csv_columns(
             daywise_raw, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
         )
-        netwise_df = validate_csv_columns(
-            netwise_raw, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    netwise_raw = pd.DataFrame()
+    netwise_df = pd.DataFrame()
+    netwise_valid = False
+
+    if netwise_file is not None:
+        try:
+            netwise_raw = _drop_unnamed_columns(_read_upload_csv(netwise_file, "Net wise"))
+            netwise_df = validate_csv_columns(
+                netwise_raw, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+            )
+            netwise_valid = True
+        except ValueError as exc:
+            netwise_warnings.append(
+                "Netwise file was not usable; closing positions will be treated as unavailable. "
+                f"Reason: {exc}"
+            )
+            netwise_df = pd.DataFrame()
+            netwise_raw = pd.DataFrame()
+    else:
+        netwise_warnings.append(
+            "Netwise file was not provided; closing positions will be treated as unavailable."
         )
 
-        group_info = resolve_group_columns(daywise_df, netwise_df)
+    try:
+        if netwise_valid and _has_group_columns(netwise_df):
+            group_info = resolve_group_columns(daywise_df, netwise_df)
+        else:
+            group_info = _resolve_daywise_group_columns(daywise_df)
+
         day_groups, net_groups, day_missing, net_missing = extract_group_indices(
             daywise_df,
             netwise_df,
@@ -274,6 +329,8 @@ async def generate_admin(
             "generated_pdfs": 0,
         },
     }
+    for warning in netwise_warnings:
+        manifest["warnings"].append({"key": "__global__", "warning": warning})
 
     try:
         rate_card = get_rate_card()
@@ -281,6 +338,9 @@ async def generate_admin(
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
     zip_buffer = io.BytesIO()
+    safe_trade_date = _sanitize_filename_part(trade_date)
+    accounts_bundle: List[Dict] = []
+    summary_rows: List[Dict] = []
 
     with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
         for key in day_groups:
@@ -295,14 +355,18 @@ async def generate_admin(
                 )
                 manifest["counts"]["accounts_empty_after_cleaning"] += 1
                 continue
-            if key in net_groups:
+            has_net_rows = key in net_groups
+            if has_net_rows:
                 net_subdf = netwise_df.loc[net_groups[key]]
             else:
                 net_subdf = netwise_df.head(0).copy()
                 manifest["warnings"].append(
                     {
                         "key": key,
-                        "warning": "Netwise rows missing; assignment STT assumed 0.",
+                        "warning": (
+                            "Netwise rows missing; assignment STT assumed 0 and closing "
+                            "positions will be marked unavailable."
+                        ),
                     }
                 )
 
@@ -319,28 +383,119 @@ async def generate_admin(
                     positions_totals=positions_totals,
                     charges=charges,
                 )
-                pdf_bytes = render_bill_pdf(context)
+                closing_rows, closing_total, closing_status = build_closing_positions(
+                    net_subdf, trade_date
+                )
+                account_meta = {
+                    "account_code": key,
+                    "account_name": key,
+                    "trade_date": trade_date,
+                }
+
+                bill_pdf_bytes = render_bill_pdf(context)
+                closing_pdf_bytes = render_closing_positions_pdf(
+                    account_meta,
+                    closing_rows,
+                    closing_total,
+                    closing_status,
+                )
+                pdf_bytes = merge_pdf_documents([bill_pdf_bytes, closing_pdf_bytes])
                 filename = _safe_pdf_filename(key, trade_date)
                 zip_file.writestr(filename, pdf_bytes)
                 manifest["success"].append({"key": key, "pdf": filename})
                 manifest["counts"]["generated_pdfs"] += 1
-            except Exception as exc:
-                manifest["failed"].append(
-                    {"key": key, "error": _truncate_error(exc)}
+                accounts_bundle.append(
+                    {
+                        "account_code": key,
+                        "account_meta": account_meta,
+                        "drcr_amount": float(context.get("total_bill_amount", 0.0)),
+                        "closing_rows": closing_rows,
+                        "closing_total": float(closing_total),
+                        "closing_status": closing_status,
+                        "bill_context": context,
+                        "bill_pdf_bytes": bill_pdf_bytes,
+                        "closing_pdf_bytes": closing_pdf_bytes,
+                    }
                 )
+            except Exception as exc:
+                manifest["failed"].append({"key": key, "error": _truncate_error(exc)})
 
         for key in netwise_only_keys(day_groups, net_groups):
-            manifest["failed"].append(
-                {"key": key, "error": "Missing in daywise file."}
+            manifest["failed"].append({"key": key, "error": "Missing in daywise file."})
+
+        consolidated_bytes = render_admin_consolidated_pdf(accounts_bundle, trade_date)
+        zip_file.writestr(f"Bill_Admin_{safe_trade_date}.pdf", consolidated_bytes)
+
+        for index, account in enumerate(accounts_bundle, start=1):
+            drcr_amount = float(account["drcr_amount"])
+            closing_total = float(account["closing_total"])
+            summary_rows.append(
+                {
+                    "sr": index,
+                    "account_code": account["account_code"],
+                    "drcr_amount": drcr_amount,
+                    "closing_total": closing_total,
+                    "final_adjusted": drcr_amount + closing_total,
+                    "closing_status": account["closing_status"],
+                }
             )
+
+        total_drcr = sum(float(row["drcr_amount"]) for row in summary_rows)
+        total_closing = sum(
+            float(row["closing_total"])
+            for row in summary_rows
+            if row.get("closing_status") == "OK"
+        )
+        missing_count = sum(
+            1 for row in summary_rows if row.get("closing_status") != "OK"
+        )
+        summary_totals = {
+            "total_drcr": total_drcr,
+            "total_closing": total_closing,
+            "final_adjusted": total_drcr + total_closing,
+            "missing_count": missing_count,
+        }
+
+        summary_pdf_bytes = render_admin_summary_pdf(
+            summary_rows, summary_totals, trade_date
+        )
+        zip_file.writestr(
+            f"Summary_Admin_Closing_Adjustment_{safe_trade_date}.pdf",
+            summary_pdf_bytes,
+        )
 
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
 
     zip_buffer.seek(0)
-    safe_trade_date = _sanitize_filename_part(trade_date)
     zip_name = f"Bills_{safe_trade_date}.zip"
     headers = {"Content-Disposition": f'attachment; filename="{zip_name}"'}
     return Response(content=zip_buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
+def _has_group_columns(df: pd.DataFrame) -> bool:
+    return bool(
+        find_column(df, ACCOUNT_ID_SYNONYMS) or find_column(df, USER_ID_SYNONYMS)
+    )
+
+
+def _resolve_daywise_group_columns(daywise_df: pd.DataFrame) -> Dict[str, Optional[str]]:
+    day_account_col = find_column(daywise_df, ACCOUNT_ID_SYNONYMS)
+    day_user_col = find_column(daywise_df, USER_ID_SYNONYMS)
+
+    if day_account_col:
+        group_key = "account_id"
+    elif day_user_col:
+        group_key = "user_id"
+    else:
+        raise ValueError("Admin file must contain Account Id or User Id column.")
+
+    return {
+        "group_key": group_key,
+        "day_account_col": day_account_col,
+        "net_account_col": None,
+        "day_user_col": day_user_col,
+        "net_user_col": None,
+    }
 
 
 def _truncate_error(exc: Exception, limit: int = 300) -> str:

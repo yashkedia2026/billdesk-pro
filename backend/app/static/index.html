@@ -671,6 +671,8 @@
       const accountField = document.getElementById("account-field");
       const accountInput = document.getElementById("account-input");
       const accountLabel = document.getElementById("account-label");
+      const daywiseInput = form ? form.querySelector('input[name="daywise_file"]') : null;
+      const netwiseInput = form ? form.querySelector('input[name="netwise_file"]') : null;
       const daywiseLabel = document.getElementById("daywise-label");
       const netwiseLabel = document.getElementById("netwise-label");
       const submitBtn = document.getElementById("submit-btn");
@@ -865,8 +867,16 @@
         if (daywiseLabel) {
           daywiseLabel.textContent = adminMode ? "Admin Daywise CSV" : "Daywise CSV";
         }
+        if (daywiseInput) {
+          daywiseInput.required = true;
+        }
         if (netwiseLabel) {
-          netwiseLabel.textContent = adminMode ? "Admin Netwise CSV" : "Netwise CSV";
+          netwiseLabel.textContent = adminMode
+            ? "Admin Netwise CSV (optional)"
+            : "Netwise CSV";
+        }
+        if (netwiseInput) {
+          netwiseInput.required = !adminMode;
         }
         if (previewBtn) {
           previewBtn.disabled = adminMode;

@@ -153,3 +153,34 @@ def test_group_then_clean_can_drop_account_rows():
     assert set(day_groups.keys()) == {"A1", "A2", "A3"}
     a2_clean = clean_df(day_df.loc[day_groups["A2"]])
     assert a2_clean.empty
+
+
+def test_resolve_group_columns_when_netwise_missing_uses_daywise_columns():
+    day_df = pd.DataFrame({"Account Id": ["A1"], "User Id": ["U1"]})
+    net_df = pd.DataFrame()
+
+    info = resolve_group_columns(day_df, net_df)
+    assert info["group_key"] == "account_id"
+    assert info["day_account_col"] == "Account Id"
+    assert info["net_account_col"] is None
+
+
+def test_extract_group_indices_allows_empty_netwise_without_group_columns():
+    day_df = pd.DataFrame({"Account Id": ["A1", "A2"]})
+    net_df = pd.DataFrame()
+
+    info = resolve_group_columns(day_df, net_df)
+    day_groups, net_groups, day_missing, net_missing = extract_group_indices(
+        day_df,
+        net_df,
+        info["group_key"],
+        info["day_account_col"],
+        info["day_user_col"],
+        info["net_account_col"],
+        info["net_user_col"],
+    )
+
+    assert set(day_groups.keys()) == {"A1", "A2"}
+    assert net_groups == {}
+    assert day_missing == 0
+    assert net_missing == 0

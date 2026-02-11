@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import io
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
+from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -81,6 +82,263 @@ def render_bill_pdf(context: Dict) -> bytes:
     elements.append(expenses_layout)
 
     doc.build(elements, canvasmaker=_NumberedCanvas)
+    return buffer.getvalue()
+
+
+def render_bill_pages(context: Dict) -> bytes:
+    """Compatibility helper for bill-only pages."""
+    return render_bill_pdf(context)
+
+
+def draw_closing_positions_page(
+    c: canvas.Canvas,
+    account_meta: Dict,
+    rows: List[Dict],
+    total_value: float,
+    status: str,
+    *,
+    start_new_page: bool = True,
+) -> None:
+    if start_new_page:
+        c.showPage()
+
+    page_width, page_height = landscape(A4)
+    left = 12 * mm
+    right = page_width - 12 * mm
+    top = page_height - 12 * mm
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(left, top, "Closing Positions")
+
+    account_code = str(
+        account_meta.get("account_code")
+        or account_meta.get("code")
+        or account_meta.get("account")
+        or ""
+    ).strip()
+    trade_date = _format_trade_date(account_meta.get("trade_date", ""))
+
+    y = top - 7 * mm
+    c.setFont("Helvetica", 9)
+    c.drawString(left, y, f"Account Id / User Id: {account_code or '-'}")
+    y -= 5 * mm
+    c.drawString(left, y, f"Trade Date: {trade_date}")
+    y -= 7 * mm
+
+    if status != "OK" or not rows:
+        message = (
+            "No open positions."
+            if status == "NO_OPEN_POSITIONS"
+            else "Closing positions not available (NETWISE missing / no matching data)."
+        )
+        c.setFont("Helvetica-Oblique", 10)
+        c.drawString(left, y, message)
+        y -= 10 * mm
+        c.setFont("Helvetica-Bold", 10)
+        c.drawRightString(
+            right,
+            y,
+            "Total Value of Closing Positions (Account-wise): 0.00",
+        )
+        return
+
+    headers = [
+        "Sr. No.",
+        "Strike / Contract",
+        "Net Quantity",
+        "LTP",
+        "Value of Closing Position (LTP x Net Qty)",
+    ]
+    table_data = [headers]
+    for row in rows:
+        table_data.append(
+            [
+                str(row.get("sr", "")),
+                str(row.get("contract", "")),
+                _format_qty(row.get("net_qty")),
+                _format_amount(row.get("ltp", 0), 2),
+                _format_amount(row.get("value", 0), 2),
+            ]
+        )
+    table_data.append(
+        [
+            "",
+            "Total",
+            "",
+            "",
+            _format_amount(total_value, 2),
+        ]
+    )
+
+    col_widths = _scale_widths([14, 74, 26, 22, 44], right - left)
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efede2")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+
+    available_height = max(20 * mm, y - 18 * mm)
+    _, height = table.wrap(right - left, available_height)
+    table.drawOn(c, left, y - height)
+
+
+def render_closing_positions_pdf(
+    account_meta: Dict,
+    rows: List[Dict],
+    total_value: float,
+    status: str,
+) -> bytes:
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    draw_closing_positions_page(
+        c,
+        account_meta,
+        rows,
+        total_value,
+        status,
+        start_new_page=False,
+    )
+    c.save()
+    return buffer.getvalue()
+
+
+def merge_pdf_documents(pdf_documents: Sequence[bytes]) -> bytes:
+    writer = PdfWriter()
+
+    for pdf_bytes in pdf_documents:
+        if not pdf_bytes:
+            continue
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+
+    output = io.BytesIO()
+    if len(writer.pages) == 0:
+        blank = canvas.Canvas(output, pagesize=landscape(A4))
+        blank.setFont("Helvetica", 9)
+        blank.drawString(10 * mm, landscape(A4)[1] - 12 * mm, "No pages generated.")
+        blank.save()
+        return output.getvalue()
+
+    writer.write(output)
+    return output.getvalue()
+
+
+def render_admin_consolidated_pdf(accounts_bundle: List[Dict], trade_date: str) -> bytes:
+    del trade_date  # kept for API compatibility
+
+    ordered_parts: List[bytes] = []
+
+    for account in accounts_bundle:
+        bill_pdf = account.get("bill_pdf_bytes")
+        if not bill_pdf and account.get("bill_context"):
+            bill_pdf = render_bill_pages(account["bill_context"])
+        if bill_pdf:
+            ordered_parts.append(bill_pdf)
+
+    for account in accounts_bundle:
+        closing_pdf = account.get("closing_pdf_bytes")
+        if not closing_pdf:
+            closing_pdf = render_closing_positions_pdf(
+                account.get("account_meta", {}),
+                account.get("closing_rows", []),
+                float(account.get("closing_total", 0.0)),
+                str(account.get("closing_status", "MISSING")),
+            )
+        ordered_parts.append(closing_pdf)
+
+    return merge_pdf_documents(ordered_parts)
+
+
+def render_admin_summary_pdf(summary_rows: List[Dict], totals: Dict, trade_date: str) -> bytes:
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    page_width, page_height = landscape(A4)
+
+    left = 12 * mm
+    right = page_width - 12 * mm
+    top = page_height - 12 * mm
+
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(left, top, "Admin Closing Adjustment Summary")
+    c.setFont("Helvetica", 9)
+    c.drawString(left, top - 6 * mm, f"Trade Date: {_format_trade_date(trade_date)}")
+
+    table_data = [
+        [
+            "Sr. No.",
+            "Account Code",
+            "Total Bill Amount",
+            "Total Closing Positions",
+            "Final Adjusted",
+        ]
+    ]
+    for row in summary_rows:
+        drcr_amount = float(row.get("drcr_amount", 0))
+        closing_total = float(row.get("closing_total", 0))
+        final_adjusted = float(row.get("final_adjusted", drcr_amount + closing_total))
+        table_data.append(
+            [
+                str(row.get("sr", "")),
+                str(row.get("account_code", "")),
+                _format_signed_amount(drcr_amount, 2),
+                _format_signed_amount(closing_total, 2),
+                _format_signed_amount(final_adjusted, 2),
+            ]
+        )
+    if len(table_data) == 1:
+        table_data.append(["", "No accounts generated", "0.00", "0.00", "0.00"])
+
+    table_data.append(
+        [
+            "",
+            "Total",
+            _format_signed_amount(totals.get("total_drcr", 0.0), 2),
+            _format_signed_amount(totals.get("total_closing", 0.0), 2),
+            _format_signed_amount(totals.get("final_adjusted", 0.0), 2),
+        ]
+    )
+
+    summary_table = Table(
+        table_data,
+        colWidths=_scale_widths([12, 52, 30, 30, 34], right - left),
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efede2")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                ("ALIGN", (2, 0), (4, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+
+    y = top - 14 * mm
+    _, table_height = summary_table.wrap(right - left, page_height)
+    summary_table.drawOn(c, left, y - table_height)
+
+    c.save()
     return buffer.getvalue()
 
 
@@ -385,6 +643,25 @@ def _format_amount(value: object, decimals: int = 2) -> str:
         return ""
     fmt = f"{{:,.{decimals}f}}"
     return fmt.format(amount)
+
+
+def _format_drcr(value: object) -> str:
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        amount = 0.0
+    side = "CR" if amount >= 0 else "DR"
+    return f"{_format_amount(abs(amount), 2)} {side}"
+
+
+def _format_signed_amount(value: object, decimals: int = 2) -> str:
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount < 0:
+        return f"-{_format_amount(abs(amount), decimals)}"
+    return _format_amount(amount, decimals)
 
 
 def _format_qty(value: object) -> str:

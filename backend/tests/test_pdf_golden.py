@@ -79,21 +79,21 @@ def test_pdf_golden() -> None:
 
     _assert_contains(
         generated_text,
-        rf"Total Bill Amount:?\\s+{expected_total_bill}",
+        rf"Total Bill Amount:?\s+{expected_total_bill}",
         "Total Bill Amount",
     )
-    _assert_contains(generated_text, rf"Total\\s+{expected_total_expenses}", "Total Expenses")
-    _assert_contains(generated_text, rf"\\bSTT\\b\\s+{expected_stt}", "STT line")
+    _assert_contains(generated_text, rf"Total\s+{expected_total_expenses}", "Total Expenses")
+    _assert_contains(generated_text, rf"\bSTT\b\s+{expected_stt}", "STT line")
     _assert_contains(
         generated_text,
-        rf"TOC NSE Exchange\\s+{expected_toc_nse}",
+        rf"TOC NSE Exchange\s+{expected_toc_nse}",
         "TOC NSE",
     )
     _assert_contains(
         generated_text,
-        rf"TOC BSE Exchange\\s+{expected_toc_bse}",
+        rf"TOC BSE Exchange\s+{expected_toc_bse}",
         "TOC BSE",
     )
-    _assert_contains(generated_text, rf"CGST\\s+{expected_cgst}", "CGST")
-    _assert_contains(generated_text, rf"SGST\\s+{expected_sgst}", "SGST")
-    _assert_contains(generated_text, rf"IPFT Charges\\s+{expected_ipft}", "IPFT")
+    _assert_contains(generated_text, rf"CGST\s+{expected_cgst}", "CGST")
+    _assert_contains(generated_text, rf"SGST\s+{expected_sgst}", "SGST")
+    _assert_contains(generated_text, rf"IPFT Charges\s+{expected_ipft}", "IPFT")

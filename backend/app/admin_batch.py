@@ -43,10 +43,11 @@ def resolve_group_columns(day_df: pd.DataFrame, net_df: pd.DataFrame) -> Dict[st
     net_account = find_column(net_df, ACCOUNT_ID_SYNONYMS)
     day_user = find_column(day_df, USER_ID_SYNONYMS)
     net_user = find_column(net_df, USER_ID_SYNONYMS)
+    net_has_columns = net_df is not None and len(getattr(net_df, "columns", [])) > 0
 
-    if day_account and net_account:
+    if day_account and (net_account or not net_has_columns):
         group_key = "account_id"
-    elif day_user and net_user:
+    elif day_user and (net_user or not net_has_columns):
         group_key = "user_id"
     else:
         raise ValueError("Admin file must contain Account Id or User Id column.")
@@ -99,6 +100,9 @@ def _build_group_indices(
     account_col: Optional[str],
     user_col: Optional[str],
 ) -> Tuple[Dict[str, pd.Index], int]:
+    if df.empty and not account_col and not user_col:
+        return {}, 0
+
     if group_key == "account_id":
         if not account_col:
             raise ValueError("Admin file must contain Account Id or User Id column.")
