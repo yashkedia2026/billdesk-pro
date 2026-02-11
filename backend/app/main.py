@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pandas.errors import EmptyDataError, ParserError
 
-from app.admin_batch import extract_group_indices, resolve_group_columns
+from app.admin_batch import extract_group_indices, netwise_only_keys, resolve_group_columns
 from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
 from app.pdf import build_pdf_context, render_bill_pdf
@@ -231,23 +231,21 @@ async def generate_admin(
         )
 
     try:
-        daywise_df = _read_upload_csv(daywise_file, "Day wise")
-        netwise_df = _read_upload_csv(netwise_file, "Net wise")
+        daywise_raw = _read_upload_csv(daywise_file, "Day wise")
+        netwise_raw = _read_upload_csv(netwise_file, "Net wise")
 
-        daywise_df = clean_df(daywise_df)
-        netwise_df = clean_df(netwise_df)
-
-        resolve_group_columns(daywise_df, netwise_df)
+        daywise_raw = _drop_unnamed_columns(daywise_raw)
+        netwise_raw = _drop_unnamed_columns(netwise_raw)
 
         daywise_df = validate_csv_columns(
-            daywise_df, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
+            daywise_raw, REQUIRED_COLUMNS, DAYWISE_SYNONYMS, "Daywise"
         )
         netwise_df = validate_csv_columns(
-            netwise_df, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
+            netwise_raw, REQUIRED_COLUMNS, NETWISE_SYNONYMS, "Netwise"
         )
 
         group_info = resolve_group_columns(daywise_df, netwise_df)
-        day_groups, net_groups, failures = extract_group_indices(
+        day_groups, net_groups, day_missing, net_missing = extract_group_indices(
             daywise_df,
             netwise_df,
             group_info["group_key"],
@@ -263,16 +261,19 @@ async def generate_admin(
         "trade_date": trade_date,
         "group_key_used": group_info["group_key"],
         "success": [],
-        "failed": failures,
+        "failed": [],
+        "warnings": [],
+        "counts": {
+            "daywise_rows_total": int(daywise_raw.shape[0]),
+            "netwise_rows_total": int(netwise_raw.shape[0]),
+            "daywise_unique_keys": len(day_groups),
+            "netwise_unique_keys": len(net_groups),
+            "daywise_rows_missing_key": day_missing,
+            "netwise_rows_missing_key": net_missing,
+            "accounts_empty_after_cleaning": 0,
+            "generated_pdfs": 0,
+        },
     }
-
-    if debug:
-        manifest["debug"] = {
-            "daywise_rows": int(daywise_df.shape[0]),
-            "netwise_rows": int(netwise_df.shape[0]),
-            "daywise_groups": len(day_groups),
-            "netwise_groups": len(net_groups),
-        }
 
     try:
         rate_card = get_rate_card()
@@ -283,14 +284,27 @@ async def generate_admin(
 
     with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
         for key in day_groups:
-            if key not in net_groups:
+            day_sub_raw = daywise_df.loc[day_groups[key]]
+            day_subdf = clean_df(day_sub_raw)
+            if day_subdf.empty:
                 manifest["failed"].append(
-                    {"key": key, "error": "Missing in netwise file."}
+                    {
+                        "key": key,
+                        "error": "No tradable rows after cleaning (TradingSymbol empty).",
+                    }
                 )
+                manifest["counts"]["accounts_empty_after_cleaning"] += 1
                 continue
-
-            day_subdf = daywise_df.loc[day_groups[key]]
-            net_subdf = netwise_df.loc[net_groups[key]]
+            if key in net_groups:
+                net_subdf = netwise_df.loc[net_groups[key]]
+            else:
+                net_subdf = netwise_df.head(0).copy()
+                manifest["warnings"].append(
+                    {
+                        "key": key,
+                        "warning": "Netwise rows missing; assignment STT assumed 0.",
+                    }
+                )
 
             try:
                 positions_rows, positions_totals = build_positions(day_subdf)
@@ -309,16 +323,16 @@ async def generate_admin(
                 filename = _safe_pdf_filename(key, trade_date)
                 zip_file.writestr(filename, pdf_bytes)
                 manifest["success"].append({"key": key, "pdf": filename})
+                manifest["counts"]["generated_pdfs"] += 1
             except Exception as exc:
                 manifest["failed"].append(
                     {"key": key, "error": _truncate_error(exc)}
                 )
 
-        for key in net_groups:
-            if key not in day_groups:
-                manifest["failed"].append(
-                    {"key": key, "error": "Missing in daywise file."}
-                )
+        for key in netwise_only_keys(day_groups, net_groups):
+            manifest["failed"].append(
+                {"key": key, "error": "Missing in daywise file."}
+            )
 
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
 
@@ -377,6 +391,10 @@ def _read_upload_csv(upload_file: UploadFile, label: str) -> pd.DataFrame:
         raise ValueError(f"{label} CSV file is empty")
 
     return df
+
+
+def _drop_unnamed_columns(df: pd.DataFrame) -> pd.DataFrame:
+    return df.loc[:, [col for col in df.columns if not str(col).startswith("Unnamed:")]]
 
 
 def _numeric_sum(df: pd.DataFrame, column: str) -> float:
