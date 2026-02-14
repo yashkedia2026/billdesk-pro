@@ -9,6 +9,7 @@ def compute_charges(
     netwise_df: pd.DataFrame,
     rate_card: Dict,
     *,
+    expiry_settlement_total: float = 0.0,
     debug: bool = False,
 ) -> Tuple[Dict, Dict]:
     (
@@ -148,7 +149,7 @@ def compute_charges(
 
     total_expenses = _round2(sum(line["amount"] for line in bill_lines))
 
-    net_amount = _round2(_net_amount_from_daywise(day_df))
+    net_amount = _round2(_net_amount_from_daywise(day_df) + float(expiry_settlement_total))
     total_bill_amount = _round2(net_amount + total_expenses)
 
     charges = {
@@ -160,6 +161,7 @@ def compute_charges(
         "total_expenses": total_expenses,
         "net_amount": net_amount,
         "total_bill_amount": total_bill_amount,
+        "expiry_settlement_total": _round2(float(expiry_settlement_total)),
     }
 
     debug_payload = {
@@ -171,6 +173,7 @@ def compute_charges(
     if debug:
         debug_payload.update(
             {
+                "expiry_settlement_total": _round2(float(expiry_settlement_total)),
                 "bill_aggregation": {
                     "raw": {
                         "clearing": _round6(raw_clearing),

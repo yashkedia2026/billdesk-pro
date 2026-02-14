@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -21,6 +22,7 @@ from app.admin_batch import (
 from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
 from app.closing_positions import build_closing_positions
+from app.expiry_settlement import apply_expiry_settlement
 from app.pdf import (
     build_pdf_context,
     merge_pdf_documents,
@@ -31,6 +33,7 @@ from app.pdf import (
 )
 from app.positions import build_positions, clean_df
 from app.rate_card import get_rate_card
+from app.utils_sort import extract_pr_number, natural_pr_sort_key
 from app.validation import (
     DAYWISE_SYNONYMS,
     NETWISE_SYNONYMS,
@@ -91,6 +94,7 @@ async def generate(
         )
 
     try:
+        bill_date = _parse_trade_date(trade_date)
         daywise_df = _read_upload_csv(daywise_file, "Day wise")
         netwise_df = _read_upload_csv(netwise_file, "Net wise")
 
@@ -111,9 +115,16 @@ async def generate(
         net_qty = pd.to_numeric(netwise_df["NetQty"], errors="coerce").fillna(0)
         nonzero_netqty_rows = int((net_qty != 0).sum())
 
+        (
+            netwise_for_closing,
+            expiry_settlement_rows,
+            expiry_settlement_total,
+            expiry_pending_rows,
+        ) = apply_expiry_settlement(netwise_df, bill_date)
+
         positions_rows, positions_totals = build_positions(daywise_df)
         closing_rows, closing_total, closing_status = build_closing_positions(
-            netwise_df, trade_date
+            netwise_for_closing, trade_date
         )
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
@@ -121,7 +132,11 @@ async def generate(
     try:
         rate_card = get_rate_card()
         charges, debug_payload = compute_charges(
-            daywise_df, netwise_df, rate_card, debug=debug
+            daywise_df,
+            netwise_df,
+            rate_card,
+            expiry_settlement_total=expiry_settlement_total,
+            debug=debug,
         )
     except ValueError as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
@@ -157,6 +172,11 @@ async def generate(
                 "rows": closing_rows,
                 "total_value": closing_total,
             },
+            "expiry_settlement": {
+                "settlement_total": expiry_settlement_total,
+                "settlement_rows": expiry_settlement_rows,
+                "pending_rows": expiry_pending_rows,
+            },
             "rate_card": {
                 "source": rate_card["source"],
                 "rules_count": len(rate_card["rules"]),
@@ -175,6 +195,9 @@ async def generate(
         positions_rows=positions_rows,
         positions_totals=positions_totals,
         charges=charges,
+        expiry_settlement_rows=expiry_settlement_rows,
+        expiry_pending_rows=expiry_pending_rows,
+        expiry_settlement_total=expiry_settlement_total,
     )
     account_meta = {
         "account_code": account,
@@ -215,6 +238,7 @@ async def preview(
         )
 
     try:
+        bill_date = _parse_trade_date(trade_date)
         daywise_df = _read_upload_csv(daywise_file, "Day wise")
         netwise_df = _read_upload_csv(netwise_file, "Net wise")
 
@@ -229,7 +253,14 @@ async def preview(
         )
 
         rate_card = get_rate_card()
-        charges, _ = compute_charges(daywise_df, netwise_df, rate_card, debug=False)
+        _, _, expiry_settlement_total, _ = apply_expiry_settlement(netwise_df, bill_date)
+        charges, _ = compute_charges(
+            daywise_df,
+            netwise_df,
+            rate_card,
+            expiry_settlement_total=expiry_settlement_total,
+            debug=False,
+        )
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"ok": False, "error": str(exc)})
 
@@ -260,6 +291,11 @@ async def generate_admin(
         return JSONResponse(
             status_code=400, content={"error": "daywise CSV file is required"}
         )
+
+    try:
+        bill_date = _parse_trade_date(trade_date)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
 
     netwise_warnings: List[str] = []
 
@@ -341,9 +377,11 @@ async def generate_admin(
     safe_trade_date = _sanitize_filename_part(trade_date)
     accounts_bundle: List[Dict] = []
     summary_rows: List[Dict] = []
+    generated_account_files: List[Dict] = []
+    ordered_account_keys = sorted(day_groups.keys(), key=natural_pr_sort_key)
 
     with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
-        for key in day_groups:
+        for key in ordered_account_keys:
             day_sub_raw = daywise_df.loc[day_groups[key]]
             day_subdf = clean_df(day_sub_raw)
             if day_subdf.empty:
@@ -371,9 +409,19 @@ async def generate_admin(
                 )
 
             try:
+                (
+                    net_subdf_for_closing,
+                    expiry_settlement_rows,
+                    expiry_settlement_total,
+                    expiry_pending_rows,
+                ) = apply_expiry_settlement(net_subdf, bill_date)
                 positions_rows, positions_totals = build_positions(day_subdf)
                 charges, _ = compute_charges(
-                    day_subdf, net_subdf, rate_card, debug=False
+                    day_subdf,
+                    net_subdf,
+                    rate_card,
+                    expiry_settlement_total=expiry_settlement_total,
+                    debug=False,
                 )
                 context = build_pdf_context(
                     account=key,
@@ -382,9 +430,12 @@ async def generate_admin(
                     positions_rows=positions_rows,
                     positions_totals=positions_totals,
                     charges=charges,
+                    expiry_settlement_rows=expiry_settlement_rows,
+                    expiry_pending_rows=expiry_pending_rows,
+                    expiry_settlement_total=expiry_settlement_total,
                 )
                 closing_rows, closing_total, closing_status = build_closing_positions(
-                    net_subdf, trade_date
+                    net_subdf_for_closing, trade_date
                 )
                 account_meta = {
                     "account_code": key,
@@ -401,7 +452,13 @@ async def generate_admin(
                 )
                 pdf_bytes = merge_pdf_documents([bill_pdf_bytes, closing_pdf_bytes])
                 filename = _safe_pdf_filename(key, trade_date)
-                zip_file.writestr(filename, pdf_bytes)
+                generated_account_files.append(
+                    {
+                        "key": key,
+                        "filename": filename,
+                        "pdf_bytes": pdf_bytes,
+                    }
+                )
                 manifest["success"].append({"key": key, "pdf": filename})
                 manifest["counts"]["generated_pdfs"] += 1
                 accounts_bundle.append(
@@ -423,8 +480,12 @@ async def generate_admin(
         for key in netwise_only_keys(day_groups, net_groups):
             manifest["failed"].append({"key": key, "error": "Missing in daywise file."})
 
+        accounts_bundle = sorted(
+            accounts_bundle,
+            key=lambda item: natural_pr_sort_key(item.get("account_code", "")),
+        )
         consolidated_bytes = render_admin_consolidated_pdf(accounts_bundle, trade_date)
-        zip_file.writestr(f"Bill_Admin_{safe_trade_date}.pdf", consolidated_bytes)
+        consolidated_filename = f"Bill_Admin_{safe_trade_date}.pdf"
 
         for index, account in enumerate(accounts_bundle, start=1):
             drcr_amount = float(account["drcr_amount"])
@@ -459,10 +520,40 @@ async def generate_admin(
         summary_pdf_bytes = render_admin_summary_pdf(
             summary_rows, summary_totals, trade_date
         )
-        zip_file.writestr(
-            f"Summary_Admin_Closing_Adjustment_{safe_trade_date}.pdf",
-            summary_pdf_bytes,
+        summary_filename = f"Summary_Admin_Closing_Adjustment_{safe_trade_date}.pdf"
+
+        pdf_outputs = [
+            (consolidated_filename, consolidated_bytes),
+            (summary_filename, summary_pdf_bytes),
+        ]
+        pdf_outputs.extend(
+            (entry["filename"], entry["pdf_bytes"]) for entry in generated_account_files
         )
+        sorted_pdf_outputs = sorted(
+            pdf_outputs,
+            key=lambda item: natural_pr_sort_key(item[0]),
+        )
+        account_pdf_outputs: List[tuple[str, bytes]] = []
+        non_account_pdf_outputs: List[tuple[str, bytes]] = []
+        for filename, pdf_bytes in sorted_pdf_outputs:
+            if _is_pr_account_pdf_name(filename):
+                account_pdf_outputs.append((filename, pdf_bytes))
+            else:
+                non_account_pdf_outputs.append((filename, pdf_bytes))
+
+        # Finder commonly opens extracted folders in Date Added (desc). Writing PR files
+        # high->low makes that default view appear low->high for PR account PDFs.
+        zip_write_outputs = non_account_pdf_outputs + list(reversed(account_pdf_outputs))
+
+        for filename, pdf_bytes in zip_write_outputs:
+            zip_file.writestr(filename, pdf_bytes)
+
+        manifest["success"] = sorted(
+            manifest["success"],
+            key=lambda item: natural_pr_sort_key(item.get("pdf", "")),
+        )
+        manifest["files"] = [filename for filename, _ in sorted_pdf_outputs]
+        manifest["zip_write_order"] = [filename for filename, _ in zip_write_outputs]
 
         zip_file.writestr("manifest.json", json.dumps(manifest, indent=2))
 
@@ -511,6 +602,16 @@ def _safe_pdf_filename(account: str, trade_date: str) -> str:
     return f"Bill_{safe_account}_{safe_trade_date}.pdf"
 
 
+def _is_pr_account_pdf_name(filename: str) -> bool:
+    text = str(filename or "").strip()
+    lower = text.lower()
+    if not lower.endswith(".pdf"):
+        return False
+    if not lower.startswith("bill_") or lower.startswith("bill_admin_"):
+        return False
+    return extract_pr_number(text) is not None
+
+
 def _sanitize_filename_part(value: str) -> str:
     sanitized = "".join(
         ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in value.strip()
@@ -556,3 +657,20 @@ def _numeric_sum(df: pd.DataFrame, column: str) -> float:
     """Sum a column after coercing non-numeric values to 0."""
     series = pd.to_numeric(df[column], errors="coerce").fillna(0)
     return float(series.sum())
+
+
+def _parse_trade_date(value: str) -> date:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("trade_date is required")
+
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+
+    parsed = pd.to_datetime(text, errors="coerce", dayfirst=True)
+    if pd.isna(parsed):
+        raise ValueError("Invalid trade_date format.")
+    return parsed.date()

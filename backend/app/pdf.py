@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
@@ -12,6 +12,7 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.charges import normalize_segment
+from app.utils_sort import natural_pr_sort_key
 
 
 def render_bill_pdf(context: Dict) -> bytes:
@@ -44,6 +45,38 @@ def render_bill_pdf(context: Dict) -> bytes:
     positions_table = _build_positions_table(context, doc.width)
     elements.append(positions_table)
     elements.append(Spacer(0, 8))
+
+    expiry_rows = context.get("expiry_settlement_rows", []) or []
+    pending_rows = context.get("expiry_pending_rows", []) or []
+    expiry_total = float(context.get("expiry_settlement_total", 0.0) or 0.0)
+
+    if expiry_rows:
+        elements.append(_build_section_heading("Expiry Settlement (Exercise/Assignment)"))
+        elements.append(
+            _build_expiry_settlement_table(
+                expiry_rows,
+                doc.width,
+                include_total=True,
+                total_amount=expiry_total,
+            )
+        )
+        elements.append(Spacer(0, 8))
+
+    if pending_rows:
+        elements.append(
+            _build_section_heading(
+                "Pending Expiry Settlement (Missing Underlying Close)"
+            )
+        )
+        elements.append(
+            _build_expiry_settlement_table(
+                pending_rows,
+                doc.width,
+                include_total=False,
+                total_amount=0.0,
+            )
+        )
+        elements.append(Spacer(0, 8))
 
     expenses_table = _build_expenses_table(context, doc.width * 0.3)
     total_bill_box = _build_total_bill_box(context, doc.width * 0.3)
@@ -240,24 +273,38 @@ def merge_pdf_documents(pdf_documents: Sequence[bytes]) -> bytes:
 def render_admin_consolidated_pdf(accounts_bundle: List[Dict], trade_date: str) -> bytes:
     del trade_date  # kept for API compatibility
 
+    ordered_accounts = sorted(
+        accounts_bundle,
+        key=lambda account: natural_pr_sort_key(account.get("account_code", "")),
+    )
     ordered_parts: List[bytes] = []
 
-    for account in accounts_bundle:
+    for account in ordered_accounts:
         bill_pdf = account.get("bill_pdf_bytes")
         if not bill_pdf and account.get("bill_context"):
             bill_pdf = render_bill_pages(account["bill_context"])
         if bill_pdf:
             ordered_parts.append(bill_pdf)
+        account_meta = dict(account.get("account_meta", {}) or {})
+        if not account_meta and account.get("bill_context"):
+            context = account["bill_context"]
+            account_meta = {
+                "account_code": context.get("code", ""),
+                "trade_date": context.get("trade_date", ""),
+            }
 
-    for account in accounts_bundle:
-        closing_pdf = account.get("closing_pdf_bytes")
-        if not closing_pdf:
-            closing_pdf = render_closing_positions_pdf(
-                account.get("account_meta", {}),
-                account.get("closing_rows", []),
-                float(account.get("closing_total", 0.0)),
-                str(account.get("closing_status", "MISSING")),
-            )
+        closing_rows = account.get("closing_rows", []) or []
+        closing_total = float(account.get("closing_total", 0.0))
+        closing_status = str(account.get("closing_status", "MISSING"))
+        if not closing_rows:
+            # For ADMIN combined PDF, empty closing sections should read as no open positions.
+            closing_status = "NO_OPEN_POSITIONS"
+        closing_pdf = render_closing_positions_pdf(
+            account_meta,
+            closing_rows,
+            closing_total,
+            closing_status,
+        )
         ordered_parts.append(closing_pdf)
 
     return merge_pdf_documents(ordered_parts)
@@ -350,6 +397,9 @@ def build_pdf_context(
     positions_rows: List[Dict],
     positions_totals: Dict,
     charges: Dict,
+    expiry_settlement_rows: Optional[List[Dict]] = None,
+    expiry_pending_rows: Optional[List[Dict]] = None,
+    expiry_settlement_total: Optional[float] = None,
 ) -> Dict:
     exchange = _exchange_label(daywise_df)
     total_net_qty = sum(int(round(row.get("net_qty", 0))) for row in positions_rows)
@@ -397,6 +447,13 @@ def build_pdf_context(
         "expense_rows": expense_rows,
         "total_expenses": charges.get("total_expenses", 0),
         "total_bill_amount": charges.get("total_bill_amount", 0),
+        "expiry_settlement_rows": expiry_settlement_rows or [],
+        "expiry_pending_rows": expiry_pending_rows or [],
+        "expiry_settlement_total": float(
+            charges.get("expiry_settlement_total", 0.0)
+            if expiry_settlement_total is None
+            else expiry_settlement_total
+        ),
     }
 
 
@@ -430,6 +487,105 @@ def _build_meta_table(context: Dict, width: float) -> Table:
             ]
         )
     )
+    return table
+
+
+def _build_section_heading(text: str) -> Paragraph:
+    style = ParagraphStyle(
+        "section-heading",
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=11,
+        spaceAfter=3,
+    )
+    return Paragraph(text, style)
+
+
+def _build_expiry_settlement_table(
+    rows: List[Dict],
+    width: float,
+    *,
+    include_total: bool,
+    total_amount: float,
+) -> Table:
+    action_status_style = ParagraphStyle(
+        "action-status-cell",
+        fontName="Helvetica",
+        fontSize=6.8,
+        leading=7.6,
+        wordWrap="CJK",
+    )
+
+    headers = [
+        "Trading Symbol",
+        "Expiry",
+        "Option Type",
+        "Strike",
+        "Net Qty",
+        "Underlying Close",
+        "Intrinsic",
+        "Action / Status",
+        "Settlement Amount",
+    ]
+    data: List[List[object]] = [headers]
+
+    for row in rows:
+        data.append(
+            [
+                str(row.get("trading_symbol", "")),
+                str(row.get("expiry", "")),
+                str(row.get("option_type", "")),
+                _format_optional_amount(row.get("strike")),
+                _format_qty(row.get("net_qty")),
+                _format_optional_amount(row.get("underlying_close")),
+                _format_optional_amount(row.get("intrinsic")),
+                Paragraph(
+                    _format_action_status(row.get("action_status", "")),
+                    action_status_style,
+                ),
+                _format_amount(row.get("settlement_amount", 0.0), 2),
+            ]
+        )
+
+    if include_total:
+        data.append(
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Total",
+                _format_amount(total_amount, 2),
+            ]
+        )
+
+    col_widths = _scale_widths([72, 36, 28, 30, 26, 42, 30, 48, 46], width)
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+
+    style_rows = [
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("ALIGN", (0, 0), (2, -1), "LEFT"),
+        ("ALIGN", (3, 0), (6, -1), "RIGHT"),
+        ("ALIGN", (7, 0), (7, -1), "LEFT"),
+        ("ALIGN", (8, 0), (8, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    if include_total:
+        style_rows.extend(
+            [
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efede2")),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ]
+        )
+
+    table.setStyle(TableStyle(style_rows))
     return table
 
 
@@ -643,6 +799,37 @@ def _format_amount(value: object, decimals: int = 2) -> str:
         return ""
     fmt = f"{{:,.{decimals}f}}"
     return fmt.format(amount)
+
+
+def _format_optional_amount(value: object, decimals: int = 2) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text == "":
+        return ""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if numeric != numeric:  # NaN check
+        return ""
+    return _format_amount(value, decimals)
+
+
+def _format_action_status(value: object) -> str:
+    status = str(value or "").strip().upper()
+    status_map = {
+        "MISSING_UNDERLYING_CLOSE": "Pending: Missing Underlying Close",
+        "MISSING_STRIKE_PRICE": "Pending: Missing Strike Price",
+        "EXPIRE_OTM": "Expired OTM",
+        "EXERCISE": "Exercise",
+        "ASSIGN": "Assignment",
+    }
+    if status in status_map:
+        return status_map[status]
+    if not status:
+        return ""
+    return status.replace("_", " ").title()
 
 
 def _format_drcr(value: object) -> str:

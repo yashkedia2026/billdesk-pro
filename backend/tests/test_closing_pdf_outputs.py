@@ -26,15 +26,39 @@ def _pdf_text_pages(pdf_bytes: bytes) -> list[str]:
     return [(page.extract_text() or "") for page in reader.pages]
 
 
-def test_admin_consolidated_pdf_orders_bill_pages_then_closing_pages() -> None:
+def test_admin_consolidated_pdf_groups_bill_then_closing_per_account() -> None:
     accounts_bundle = [
         {
+            "account_code": "PR01",
             "bill_pdf_bytes": _simple_pdf("BILL A"),
-            "closing_pdf_bytes": _simple_pdf("CLOSE A"),
+            "account_meta": {"account_code": "PR01", "trade_date": "2026-01-20"},
+            "closing_rows": [
+                {
+                    "sr": 1,
+                    "contract": "CLOSE A",
+                    "net_qty": 1,
+                    "ltp": 10.0,
+                    "value": 10.0,
+                }
+            ],
+            "closing_total": 10.0,
+            "closing_status": "OK",
         },
         {
+            "account_code": "PR02",
             "bill_pdf_bytes": _simple_pdf("BILL B"),
-            "closing_pdf_bytes": _simple_pdf("CLOSE B"),
+            "account_meta": {"account_code": "PR02", "trade_date": "2026-01-20"},
+            "closing_rows": [
+                {
+                    "sr": 1,
+                    "contract": "CLOSE B",
+                    "net_qty": -2,
+                    "ltp": 5.0,
+                    "value": -10.0,
+                }
+            ],
+            "closing_total": -10.0,
+            "closing_status": "OK",
         },
     ]
 
@@ -43,9 +67,151 @@ def test_admin_consolidated_pdf_orders_bill_pages_then_closing_pages() -> None:
 
     assert len(pages) == 4
     assert "BILL A" in pages[0]
-    assert "BILL B" in pages[1]
-    assert "CLOSE A" in pages[2]
-    assert "CLOSE B" in pages[3]
+    assert "Closing Positions" in pages[1] and "CLOSE A" in pages[1]
+    assert "BILL B" in pages[2]
+    assert "Closing Positions" in pages[3] and "CLOSE B" in pages[3]
+
+
+def test_admin_consolidated_pdf_sorts_accounts_by_pr_code() -> None:
+    accounts_bundle = [
+        {
+            "account_code": "PR10",
+            "bill_pdf_bytes": _simple_pdf("BILL PR10"),
+            "account_meta": {"account_code": "PR10", "trade_date": "2026-01-20"},
+            "closing_rows": [
+                {
+                    "sr": 1,
+                    "contract": "CLOSE PR10",
+                    "net_qty": 1,
+                    "ltp": 1.0,
+                    "value": 1.0,
+                }
+            ],
+            "closing_total": 1.0,
+            "closing_status": "OK",
+        },
+        {
+            "account_code": "PR05",
+            "bill_pdf_bytes": _simple_pdf("BILL PR05"),
+            "account_meta": {"account_code": "PR05", "trade_date": "2026-01-20"},
+            "closing_rows": [
+                {
+                    "sr": 1,
+                    "contract": "CLOSE PR05",
+                    "net_qty": 1,
+                    "ltp": 1.0,
+                    "value": 1.0,
+                }
+            ],
+            "closing_total": 1.0,
+            "closing_status": "OK",
+        },
+        {
+            "account_code": "PR6",
+            "bill_pdf_bytes": _simple_pdf("BILL PR6"),
+            "account_meta": {"account_code": "PR6", "trade_date": "2026-01-20"},
+            "closing_rows": [
+                {
+                    "sr": 1,
+                    "contract": "CLOSE PR6",
+                    "net_qty": 1,
+                    "ltp": 1.0,
+                    "value": 1.0,
+                }
+            ],
+            "closing_total": 1.0,
+            "closing_status": "OK",
+        },
+    ]
+
+    pdf_bytes = render_admin_consolidated_pdf(accounts_bundle, "2026-01-20")
+    pages = _pdf_text_pages(pdf_bytes)
+
+    assert len(pages) == 6
+    assert "BILL PR05" in pages[0]
+    assert "CLOSE PR05" in pages[1]
+    assert "BILL PR6" in pages[2]
+    assert "CLOSE PR6" in pages[3]
+    assert "BILL PR10" in pages[4]
+    assert "CLOSE PR10" in pages[5]
+
+
+def test_admin_consolidated_pdf_account_section_heading_order_smoke() -> None:
+    account = {
+        "account_code": "PR25",
+        "account_meta": {"account_code": "PR25", "trade_date": "2026-02-12"},
+        "bill_context": {
+            "code": "PR25",
+            "exchange": "BSE_FO",
+            "market_type": "FO",
+            "trade_date_display": "12-02-2026",
+            "positions_rows": [
+                {
+                    "sr": 1,
+                    "security": "SENSEX 12FEB2026 CE 84000",
+                    "bf_qty": 0,
+                    "bf_rate": 0,
+                    "bf_amount": 0,
+                    "buy_qty": 0,
+                    "buy_rate": 0,
+                    "buy_amount": 0,
+                    "sell_qty": 20,
+                    "sell_rate": 100,
+                    "sell_amount": 2000,
+                    "brkg": 0,
+                    "net_qty": -20,
+                    "net_rate": 0,
+                    "net_amount": 2000,
+                }
+            ],
+            "positions_totals": {
+                "total_buy_qty": 0,
+                "total_buy_amount": 0,
+                "total_sell_qty": 20,
+                "total_sell_amount": 2000,
+                "total_net_amount": 2000,
+            },
+            "total_net_qty": -20,
+            "expiry_settlement_rows": [],
+            "expiry_pending_rows": [
+                {
+                    "trading_symbol": "SENSEX 12FEB2026 CE 84000",
+                    "expiry": "12Feb2026",
+                    "option_type": "CE",
+                    "strike": 84000.0,
+                    "net_qty": -20,
+                    "underlying_close": None,
+                    "intrinsic": None,
+                    "action_status": "MISSING_UNDERLYING_CLOSE",
+                    "settlement_amount": 0.0,
+                }
+            ],
+            "expiry_settlement_total": 0.0,
+            "expense_rows": [{"sr": 1, "label": "STT", "amount": -10, "decimals": 0}],
+            "total_expenses": -10,
+            "total_bill_amount": 1990,
+        },
+        "closing_rows": [],
+        "closing_total": 0.0,
+        "closing_status": "MISSING",
+    }
+    pdf_bytes = render_admin_consolidated_pdf([account], "2026-02-12")
+    text = " ".join(_pdf_text_pages(pdf_bytes))
+
+    bill_idx = text.find("Bill Summary Report")
+    pending_idx = text.find("Pending Expiry Settlement")
+    expenses_idx = text.find("Expenses")
+    total_idx = text.find("Total Bill Amount")
+    closing_idx = text.find("Closing Positions")
+    no_open_idx = text.find("No open positions.")
+
+    assert bill_idx != -1
+    assert pending_idx != -1
+    assert expenses_idx != -1
+    assert total_idx != -1
+    assert closing_idx != -1
+    assert no_open_idx != -1
+    assert bill_idx < pending_idx < expenses_idx < total_idx < closing_idx < no_open_idx
 
 
 def test_closing_page_pdf_renders_unavailable_message() -> None:
