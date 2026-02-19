@@ -86,6 +86,7 @@
 
       input[type="text"],
       input[type="date"],
+      input[type="number"],
       input[type="file"] {
         padding: 10px 12px;
         border-radius: 8px;
@@ -96,6 +97,7 @@
 
       input[type="text"]:focus-visible,
       input[type="date"]:focus-visible,
+      input[type="number"]:focus-visible,
       input[type="file"]:focus-visible {
         outline: 2px solid rgba(31, 75, 153, 0.25);
         border-color: #1f4b99;
@@ -309,6 +311,82 @@
         color: #64748b;
       }
 
+      .manual-close-section {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        background: #fafcff;
+      }
+
+      .manual-close-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .manual-close-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 12px;
+      }
+
+      .index-close-controls {
+        display: grid;
+        gap: 10px;
+      }
+
+      .index-close-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .index-close-row select,
+      .index-close-row input[type="number"] {
+        min-width: 0;
+      }
+
+      .index-close-row select,
+      .index-close-row input[type="number"],
+      .index-close-row .index-remove-icon {
+        height: 42px;
+      }
+
+      .index-close-row select {
+        flex: 1.2;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 14px;
+        background: #fff;
+      }
+
+      .index-close-row input[type="number"] {
+        flex: 1;
+      }
+
+      .index-close-row .index-remove-icon {
+        width: 42px;
+        min-width: 42px;
+        padding: 0;
+        border-radius: 10px;
+      }
+
+      #add-index-close-btn {
+        justify-self: start;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      .index-close-error {
+        margin: 0;
+        font-size: 12px;
+        color: #b42318;
+      }
+
       .modal-overlay {
         position: fixed;
         inset: 0;
@@ -518,6 +596,20 @@
           padding-right: 12px;
           cursor: text;
         }
+
+        .manual-close-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .index-close-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        #add-index-close-btn {
+          width: 100%;
+          justify-self: stretch;
+        }
       }
     </style>
   </head>
@@ -586,10 +678,30 @@
           <span id="netwise-label">Netwise CSV</span>
           <input type="file" name="netwise_file" accept=".csv" required />
         </label>
-        <label class="checkbox-row">
-          <input type="checkbox" id="debug-toggle" />
-          Debug (return JSON)
-        </label>
+        <section class="manual-close-section">
+          <p class="manual-close-title">
+            Index Close
+          </p>
+          <div class="index-close-controls">
+            <div id="index-close-rows" aria-live="polite"></div>
+            <button type="button" id="add-index-close-btn" class="button-secondary">
+              + Add another index close
+            </button>
+            <p id="index-close-error" class="index-close-error" hidden></p>
+          </div>
+
+          <input type="hidden" name="close_sensex" id="close_sensex" value="" />
+          <input type="hidden" name="close_bankex" id="close_bankex" value="" />
+          <input type="hidden" name="close_nifty" id="close_nifty" value="" />
+          <input type="hidden" name="close_banknifty" id="close_banknifty" value="" />
+          <input type="hidden" name="close_finnifty" id="close_finnifty" value="" />
+          <input type="hidden" name="close_midcpnifty" id="close_midcpnifty" value="" />
+          <input type="hidden" name="close_niftynxt50" id="close_niftynxt50" value="" />
+
+          <p class="helper-text">
+            Note: If left blank, expiry-day settlement entries will remain in Pending status.
+          </p>
+        </section>
         <div class="button-row">
           <button type="button" id="preview-btn" class="button-secondary">Preview Charges</button>
           <button type="submit" id="submit-btn">Generate PDF</button>
@@ -684,6 +796,29 @@
       const modalGenerateBtn = document.getElementById("modal-generate-btn");
       const modalCloseBtn = document.getElementById("modal-close-btn");
       const modalCloseIcon = document.getElementById("modal-close-icon");
+      const indexCloseRows = document.getElementById("index-close-rows");
+      const addIndexCloseBtn = document.getElementById("add-index-close-btn");
+      const indexCloseError = document.getElementById("index-close-error");
+
+      const INDEX_OPTIONS = [
+        "SENSEX",
+        "BANKEX",
+        "NIFTY",
+        "BANKNIFTY",
+        "FINNIFTY",
+        "MIDCPNIFTY",
+        "NIFTYNXT50",
+      ];
+      const INDEX_TO_FIELD = {
+        SENSEX: "close_sensex",
+        BANKEX: "close_bankex",
+        NIFTY: "close_nifty",
+        BANKNIFTY: "close_banknifty",
+        FINNIFTY: "close_finnifty",
+        MIDCPNIFTY: "close_midcpnifty",
+        NIFTYNXT50: "close_niftynxt50",
+      };
+      const MAX_INDEX_CLOSE_ROWS = INDEX_OPTIONS.length;
 
       let tradeDateHidden = null;
       let tradeDateDisplay = null;
@@ -794,6 +929,10 @@
         return Boolean(adminToggle && adminToggle.checked);
       }
 
+      function isDebugModeEnabled() {
+        return Boolean(debugToggle && debugToggle.checked);
+      }
+
       function normalizeName(value) {
         return String(value || "").replace(/\s+/g, " ").trim();
       }
@@ -837,6 +976,196 @@
 
       function clearModalMessage() {
         setModalMessage("", "");
+      }
+
+      function setIndexCloseError(message) {
+        if (!indexCloseError) return;
+        const text = String(message || "").trim();
+        indexCloseError.textContent = text;
+        indexCloseError.hidden = !text;
+      }
+
+      function clearAllIndexCloseHiddenFields() {
+        Object.values(INDEX_TO_FIELD).forEach((fieldId) => {
+          const hiddenInput = document.getElementById(fieldId);
+          if (hiddenInput) {
+            hiddenInput.value = "";
+          }
+        });
+      }
+
+      function getIndexCloseRows() {
+        if (!indexCloseRows) return [];
+        return Array.from(indexCloseRows.querySelectorAll(".index-close-row"));
+      }
+
+      function updateAddIndexCloseButtonState() {
+        if (!addIndexCloseBtn) return;
+        const rowCount = getIndexCloseRows().length;
+        addIndexCloseBtn.disabled = rowCount >= MAX_INDEX_CLOSE_ROWS;
+      }
+
+      function updateIndexSelectOptions() {
+        const rows = getIndexCloseRows();
+        const selectedCounts = {};
+
+        rows.forEach((row) => {
+          const select = row.querySelector(".idx-select");
+          const selected = select ? String(select.value || "").trim() : "";
+          if (selected) {
+            selectedCounts[selected] = (selectedCounts[selected] || 0) + 1;
+          }
+        });
+
+        rows.forEach((row) => {
+          const select = row.querySelector(".idx-select");
+          if (!select) return;
+
+          const ownValue = String(select.value || "").trim();
+          Array.from(select.options).forEach((option) => {
+            const value = String(option.value || "").trim();
+            if (!value) {
+              option.disabled = false;
+              return;
+            }
+            option.disabled = value !== ownValue && Boolean(selectedCounts[value]);
+          });
+        });
+      }
+
+      function syncHiddenIndexCloseFields() {
+        clearAllIndexCloseHiddenFields();
+
+        const rows = getIndexCloseRows();
+        const seen = new Set();
+        let duplicateIndex = "";
+
+        rows.forEach((row) => {
+          const select = row.querySelector(".idx-select");
+          const closeInput = row.querySelector(".idx-close");
+          if (!select || !closeInput) return;
+
+          const index = String(select.value || "").trim();
+          const closeValue = String(closeInput.value || "").trim();
+          if (!index) return;
+
+          if (seen.has(index) && !duplicateIndex) {
+            duplicateIndex = index;
+            return;
+          }
+          seen.add(index);
+
+          const hiddenFieldId = INDEX_TO_FIELD[index];
+          const hiddenInput = hiddenFieldId
+            ? document.getElementById(hiddenFieldId)
+            : null;
+          if (hiddenInput) {
+            hiddenInput.value = closeValue;
+          }
+        });
+
+        if (duplicateIndex) {
+          setIndexCloseError(`${duplicateIndex} is already selected.`);
+        } else {
+          setIndexCloseError("");
+        }
+
+        updateIndexSelectOptions();
+        updateAddIndexCloseButtonState();
+      }
+
+      function createIndexCloseRow(defaultIndex = "", defaultClose = "") {
+        const row = document.createElement("div");
+        row.className = "index-close-row";
+
+        const select = document.createElement("select");
+        select.className = "idx-select";
+        select.setAttribute("aria-label", "Underlying Index");
+
+        const placeholderOption = document.createElement("option");
+        placeholderOption.value = "";
+        placeholderOption.textContent = "Select index...";
+        select.appendChild(placeholderOption);
+
+        INDEX_OPTIONS.forEach((indexName) => {
+          const option = document.createElement("option");
+          option.value = indexName;
+          option.textContent = indexName;
+          select.appendChild(option);
+        });
+        select.value = defaultIndex;
+
+        const closeInput = document.createElement("input");
+        closeInput.type = "number";
+        closeInput.step = "0.01";
+        closeInput.min = "0";
+        closeInput.inputMode = "decimal";
+        closeInput.placeholder = "Closing Price";
+        closeInput.className = "idx-close";
+        closeInput.setAttribute("aria-label", "Index Close");
+        closeInput.value = defaultClose;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "remove-icon index-remove-icon";
+        removeBtn.setAttribute("aria-label", "Remove index close row");
+        removeBtn.title = "Remove";
+        removeBtn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+            <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+          </svg>
+        `;
+        removeBtn.addEventListener("click", () => {
+          row.remove();
+          if (getIndexCloseRows().length === 0 && indexCloseRows) {
+            indexCloseRows.appendChild(createIndexCloseRow());
+          }
+          syncHiddenIndexCloseFields();
+        });
+
+        select.addEventListener("change", syncHiddenIndexCloseFields);
+        closeInput.addEventListener("input", syncHiddenIndexCloseFields);
+
+        row.appendChild(select);
+        row.appendChild(closeInput);
+        row.appendChild(removeBtn);
+        return row;
+      }
+
+      function addIndexCloseRow(defaultIndex = "", defaultClose = "") {
+        if (!indexCloseRows) return;
+        if (getIndexCloseRows().length >= MAX_INDEX_CLOSE_ROWS) {
+          return;
+        }
+        indexCloseRows.appendChild(createIndexCloseRow(defaultIndex, defaultClose));
+        syncHiddenIndexCloseFields();
+      }
+
+      function initIndexCloseRows() {
+        if (!indexCloseRows) return;
+
+        indexCloseRows.innerHTML = "";
+        const existingPairs = [];
+
+        INDEX_OPTIONS.forEach((indexName) => {
+          const hiddenId = INDEX_TO_FIELD[indexName];
+          const hiddenInput = hiddenId ? document.getElementById(hiddenId) : null;
+          const value = hiddenInput ? String(hiddenInput.value || "").trim() : "";
+          if (value) {
+            existingPairs.push({ indexName, value });
+          }
+        });
+
+        if (existingPairs.length === 0) {
+          addIndexCloseRow();
+        } else {
+          existingPairs.forEach((pair) => {
+            addIndexCloseRow(pair.indexName, pair.value);
+          });
+        }
+
+        syncHiddenIndexCloseFields();
       }
 
       function openModal() {
@@ -984,10 +1313,11 @@
 
       async function handleModalGenerate() {
         syncMobileDate();
+        syncHiddenIndexCloseFields();
         if (!form.reportValidity()) {
           return;
         }
-        if (debugToggle.checked) {
+        if (isDebugModeEnabled()) {
           setModalMessage("Turn off debug to generate PDF.", "error");
           return;
         }
@@ -1098,6 +1428,13 @@
         const iconBtn = document.querySelector(".date-icon");
         dateMediaQuery = window.matchMedia("(max-width: 750px)");
 
+        if (addIndexCloseBtn) {
+          addIndexCloseBtn.addEventListener("click", () => {
+            addIndexCloseRow();
+          });
+        }
+        initIndexCloseRows();
+
         function openPicker() {
           if (isSmallScreen()) {
             return;
@@ -1151,6 +1488,7 @@
             return;
           }
           syncMobileDate();
+          syncHiddenIndexCloseFields();
           if (!form.reportValidity()) {
             return;
           }
@@ -1239,6 +1577,7 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         syncMobileDate();
+        syncHiddenIndexCloseFields();
         if (!form.reportValidity()) {
           return;
         }
@@ -1247,7 +1586,7 @@
         summaryEl.hidden = true;
 
         const formData = new FormData(form);
-        const debug = debugToggle.checked;
+        const debug = isDebugModeEnabled();
         const tradeDateValue = document.getElementById("trade_date")?.value || "";
         const baseEndpoint = isAdminMode() ? "/generate-admin" : "/generate";
         const endpoint = debug ? `${baseEndpoint}?debug=true` : baseEndpoint;

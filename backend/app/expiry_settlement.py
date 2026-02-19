@@ -30,7 +30,9 @@ def parse_expiry(value: str) -> Optional[date]:
 
 
 def apply_expiry_settlement(
-    net_df: pd.DataFrame, bill_date: date
+    net_df: pd.DataFrame,
+    bill_date: date,
+    manual_closes: Optional[Dict[str, float]] = None,
 ) -> Tuple[pd.DataFrame, List[Dict], float, List[Dict]]:
     """
     Returns:
@@ -40,6 +42,7 @@ def apply_expiry_settlement(
         empty = net_df.copy() if isinstance(net_df, pd.DataFrame) else pd.DataFrame()
         return empty, [], 0.0, []
 
+    normalized_manual_closes = _normalize_manual_closes(manual_closes)
     expiry_col = _find_column(net_df, ["Expiry"])
     if not expiry_col:
         return net_df.copy(), [], 0.0, []
@@ -48,8 +51,6 @@ def apply_expiry_settlement(
     net_qty_col = _find_column(net_df, ["NetQty", "Net Qty"])
     trading_symbol_col = _find_column(net_df, ["TradingSymbol", "Trading Symbol"])
     strike_col = _find_column(net_df, ["Strike Price"])
-    underlying_close_col = _find_column(net_df, ["Underlying Close"])
-    underlying_symbol_col = _find_column(net_df, ["Underlying Symbol"])
     lot_size_col = _find_column(net_df, ["Lot Size"])
     multiplier_col = _find_column(net_df, ["Multiplier"])
     net_lot_col = _find_column(net_df, ["Net Lot", "Net Lots"])
@@ -79,16 +80,11 @@ def apply_expiry_settlement(
         trading_symbol = _as_str(
             row.get(trading_symbol_col) if trading_symbol_col else ""
         )
+        underlying_symbol = _extract_underlying_symbol(trading_symbol)
+        manual_close = normalized_manual_closes.get(underlying_symbol)
+
         expiry_text = _as_str(row.get(expiry_col, ""))
         strike_value = _to_float_or_none(row.get(strike_col)) if strike_col else None
-        underlying_close = (
-            _to_float_or_none(row.get(underlying_close_col))
-            if underlying_close_col
-            else None
-        )
-        underlying_symbol = _as_str(
-            row.get(underlying_symbol_col) if underlying_symbol_col else ""
-        )
 
         base_payload = {
             "trading_symbol": trading_symbol,
@@ -97,15 +93,19 @@ def apply_expiry_settlement(
             "strike": strike_value,
             "net_qty": net_qty,
             "underlying_symbol": underlying_symbol,
+            "close_date": bill_date.isoformat(),
+            "source": "MANUAL_INPUT",
         }
 
-        if underlying_close is None:
+        if manual_close is None:
             pending_rows.append(
                 {
                     **base_payload,
                     "underlying_close": None,
                     "intrinsic": None,
-                    "action_status": "MISSING_UNDERLYING_CLOSE",
+                    "verification_status": "PENDING",
+                    "status": "MISSING_MANUAL_CLOSE",
+                    "action_status": "MISSING_MANUAL_CLOSE",
                     "settlement_amount": 0.0,
                 }
             )
@@ -115,8 +115,10 @@ def apply_expiry_settlement(
             pending_rows.append(
                 {
                     **base_payload,
-                    "underlying_close": underlying_close,
+                    "underlying_close": manual_close,
                     "intrinsic": None,
+                    "verification_status": "VERIFIED_MANUAL",
+                    "status": "MISSING_STRIKE_PRICE",
                     "action_status": "MISSING_STRIKE_PRICE",
                     "settlement_amount": 0.0,
                 }
@@ -124,9 +126,9 @@ def apply_expiry_settlement(
             continue
 
         if option_type == "CE":
-            intrinsic = max(0.0, underlying_close - strike_value)
+            intrinsic = max(0.0, manual_close - strike_value)
         else:
-            intrinsic = max(0.0, strike_value - underlying_close)
+            intrinsic = max(0.0, strike_value - manual_close)
 
         multiplier = _resolve_multiplier(
             row=row,
@@ -147,7 +149,9 @@ def apply_expiry_settlement(
         settlement_rows.append(
             {
                 **base_payload,
-                "underlying_close": underlying_close,
+                "underlying_close": manual_close,
+                "verification_status": "VERIFIED_MANUAL",
+                "status": action_status,
                 "intrinsic": intrinsic,
                 "action_status": action_status,
                 "settlement_amount": settlement_amount,
@@ -205,6 +209,32 @@ def _normalize_col_name(value: object) -> str:
 
 def _as_str(value: object) -> str:
     return str(value or "").strip()
+
+
+def _extract_underlying_symbol(trading_symbol: object) -> str:
+    text = _as_str(trading_symbol).upper()
+    if not text:
+        return ""
+    return text.split()[0]
+
+
+def _normalize_manual_closes(
+    manual_closes: Optional[Dict[str, float]],
+) -> Dict[str, float]:
+    normalized: Dict[str, float] = {}
+    if not manual_closes:
+        return normalized
+
+    for key, raw_value in manual_closes.items():
+        symbol = _as_str(key).upper()
+        if not symbol:
+            continue
+        numeric = _to_float_or_none(raw_value)
+        if numeric is None:
+            continue
+        normalized[symbol] = float(numeric)
+
+    return normalized
 
 
 def _to_float(value: object) -> float:

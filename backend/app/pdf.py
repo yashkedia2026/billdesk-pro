@@ -65,15 +65,13 @@ def render_bill_pdf(context: Dict) -> bytes:
     if pending_rows:
         elements.append(
             _build_section_heading(
-                "Pending Expiry Settlement (Missing Underlying Close)"
+                "Pending Expiry Settlement (Missing Manual Index Close)"
             )
         )
         elements.append(
-            _build_expiry_settlement_table(
+            _build_pending_expiry_settlement_table(
                 pending_rows,
                 doc.width,
-                include_total=False,
-                total_amount=0.0,
             )
         )
         elements.append(Spacer(0, 8))
@@ -518,11 +516,9 @@ def _build_expiry_settlement_table(
 
     headers = [
         "Trading Symbol",
-        "Expiry",
-        "Option Type",
-        "Strike",
         "Net Qty",
         "Underlying Close",
+        "Source",
         "Intrinsic",
         "Action / Status",
         "Settlement Amount",
@@ -533,14 +529,14 @@ def _build_expiry_settlement_table(
         data.append(
             [
                 str(row.get("trading_symbol", "")),
-                str(row.get("expiry", "")),
-                str(row.get("option_type", "")),
-                _format_optional_amount(row.get("strike")),
                 _format_qty(row.get("net_qty")),
                 _format_optional_amount(row.get("underlying_close")),
+                _format_source(row.get("source")),
                 _format_optional_amount(row.get("intrinsic")),
                 Paragraph(
-                    _format_action_status(row.get("action_status", "")),
+                    _format_action_status(
+                        row.get("action_status", row.get("status", ""))
+                    ),
                     action_status_style,
                 ),
                 _format_amount(row.get("settlement_amount", 0.0), 2),
@@ -555,25 +551,26 @@ def _build_expiry_settlement_table(
                 "",
                 "",
                 "",
-                "",
-                "",
                 "Total",
                 _format_amount(total_amount, 2),
             ]
         )
 
-    col_widths = _scale_widths([72, 36, 28, 30, 26, 42, 30, 48, 46], width)
+    col_widths = _scale_widths([92, 24, 34, 28, 24, 48, 36], width)
     table = Table(data, colWidths=col_widths, repeatRows=1)
 
     style_rows = [
         ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("ALIGN", (0, 0), (2, -1), "LEFT"),
-        ("ALIGN", (3, 0), (6, -1), "RIGHT"),
-        ("ALIGN", (7, 0), (7, -1), "LEFT"),
-        ("ALIGN", (8, 0), (8, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.0),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+        ("ALIGN", (3, 0), (3, -1), "LEFT"),
+        ("ALIGN", (4, 0), (4, -1), "RIGHT"),
+        ("ALIGN", (5, 0), (5, -1), "LEFT"),
+        ("ALIGN", (6, 0), (6, -1), "RIGHT"),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]
@@ -586,6 +583,46 @@ def _build_expiry_settlement_table(
         )
 
     table.setStyle(TableStyle(style_rows))
+    return table
+
+
+def _build_pending_expiry_settlement_table(rows: List[Dict], width: float) -> Table:
+    headers = [
+        "Trading Symbol",
+        "Net Qty",
+        "Status",
+        "Settlement Amount",
+    ]
+
+    data: List[List[object]] = [headers]
+    for row in rows:
+        data.append(
+            [
+                str(row.get("trading_symbol", "")),
+                _format_qty(row.get("net_qty")),
+                _format_action_status(row.get("status", row.get("action_status", ""))),
+                _format_amount(row.get("settlement_amount", 0.0), 2),
+            ]
+        )
+
+    col_widths = _scale_widths([108, 28, 64, 40], width)
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("ALIGN", (2, 0), (2, -1), "LEFT"),
+                ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
     return table
 
 
@@ -819,11 +856,37 @@ def _format_optional_amount(value: object, decimals: int = 2) -> str:
 def _format_action_status(value: object) -> str:
     status = str(value or "").strip().upper()
     status_map = {
+        "MISSING_MANUAL_CLOSE": "Pending: Missing Manual Close",
         "MISSING_UNDERLYING_CLOSE": "Pending: Missing Underlying Close",
         "MISSING_STRIKE_PRICE": "Pending: Missing Strike Price",
         "EXPIRE_OTM": "Expired OTM",
         "EXERCISE": "Exercise",
         "ASSIGN": "Assignment",
+    }
+    if status in status_map:
+        return status_map[status]
+    if not status:
+        return ""
+    return status.replace("_", " ").title()
+
+
+def _format_verification(value: object) -> str:
+    status = str(value or "").strip().upper()
+    status_map = {
+        "VERIFIED_MANUAL": "Verified Manual",
+        "PENDING": "Pending",
+    }
+    if status in status_map:
+        return status_map[status]
+    if not status:
+        return ""
+    return status.replace("_", " ").title()
+
+
+def _format_source(value: object) -> str:
+    status = str(value or "").strip().upper()
+    status_map = {
+        "MANUAL_INPUT": "Manual Input",
     }
     if status in status_map:
         return status_map[status]

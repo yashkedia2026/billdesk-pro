@@ -23,6 +23,7 @@ from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
 from app.closing_positions import build_closing_positions
 from app.expiry_settlement import apply_expiry_settlement
+from app.manual_index_close import build_manual_index_closes
 from app.pdf import (
     build_pdf_context,
     merge_pdf_documents,
@@ -76,6 +77,13 @@ async def generate(
     trade_date: Optional[str] = Form(None),
     daywise_file: Optional[UploadFile] = File(None),
     netwise_file: Optional[UploadFile] = File(None),
+    close_nifty: Optional[str] = Form(None),
+    close_banknifty: Optional[str] = Form(None),
+    close_finnifty: Optional[str] = Form(None),
+    close_midcpnifty: Optional[str] = Form(None),
+    close_niftynxt50: Optional[str] = Form(None),
+    close_sensex: Optional[str] = Form(None),
+    close_bankex: Optional[str] = Form(None),
     overrides_json: Optional[str] = Form(None),
     additions_json: Optional[str] = Form(None),
     debug: bool = Query(False),
@@ -95,6 +103,15 @@ async def generate(
 
     try:
         bill_date = _parse_trade_date(trade_date)
+        manual_closes = build_manual_index_closes(
+            close_nifty=close_nifty,
+            close_banknifty=close_banknifty,
+            close_finnifty=close_finnifty,
+            close_midcpnifty=close_midcpnifty,
+            close_niftynxt50=close_niftynxt50,
+            close_sensex=close_sensex,
+            close_bankex=close_bankex,
+        )
         daywise_df = _read_upload_csv(daywise_file, "Day wise")
         netwise_df = _read_upload_csv(netwise_file, "Net wise")
 
@@ -120,7 +137,11 @@ async def generate(
             expiry_settlement_rows,
             expiry_settlement_total,
             expiry_pending_rows,
-        ) = apply_expiry_settlement(netwise_df, bill_date)
+        ) = apply_expiry_settlement(
+            netwise_df,
+            bill_date,
+            manual_closes=manual_closes,
+        )
 
         positions_rows, positions_totals = build_positions(daywise_df)
         closing_rows, closing_total, closing_status = build_closing_positions(
@@ -223,6 +244,13 @@ async def preview(
     trade_date: Optional[str] = Form(None),
     daywise_file: Optional[UploadFile] = File(None),
     netwise_file: Optional[UploadFile] = File(None),
+    close_nifty: Optional[str] = Form(None),
+    close_banknifty: Optional[str] = Form(None),
+    close_finnifty: Optional[str] = Form(None),
+    close_midcpnifty: Optional[str] = Form(None),
+    close_niftynxt50: Optional[str] = Form(None),
+    close_sensex: Optional[str] = Form(None),
+    close_bankex: Optional[str] = Form(None),
 ) -> Response:
     if not account:
         return JSONResponse(status_code=400, content={"error": "account is required"})
@@ -239,6 +267,15 @@ async def preview(
 
     try:
         bill_date = _parse_trade_date(trade_date)
+        manual_closes = build_manual_index_closes(
+            close_nifty=close_nifty,
+            close_banknifty=close_banknifty,
+            close_finnifty=close_finnifty,
+            close_midcpnifty=close_midcpnifty,
+            close_niftynxt50=close_niftynxt50,
+            close_sensex=close_sensex,
+            close_bankex=close_bankex,
+        )
         daywise_df = _read_upload_csv(daywise_file, "Day wise")
         netwise_df = _read_upload_csv(netwise_file, "Net wise")
 
@@ -253,7 +290,11 @@ async def preview(
         )
 
         rate_card = get_rate_card()
-        _, _, expiry_settlement_total, _ = apply_expiry_settlement(netwise_df, bill_date)
+        _, _, expiry_settlement_total, _ = apply_expiry_settlement(
+            netwise_df,
+            bill_date,
+            manual_closes=manual_closes,
+        )
         charges, _ = compute_charges(
             daywise_df,
             netwise_df,
@@ -283,6 +324,13 @@ async def generate_admin(
     trade_date: Optional[str] = Form(None),
     daywise_file: Optional[UploadFile] = File(None),
     netwise_file: Optional[UploadFile] = File(None),
+    close_nifty: Optional[str] = Form(None),
+    close_banknifty: Optional[str] = Form(None),
+    close_finnifty: Optional[str] = Form(None),
+    close_midcpnifty: Optional[str] = Form(None),
+    close_niftynxt50: Optional[str] = Form(None),
+    close_sensex: Optional[str] = Form(None),
+    close_bankex: Optional[str] = Form(None),
     debug: bool = Query(False),
 ) -> Response:
     if not trade_date:
@@ -294,6 +342,15 @@ async def generate_admin(
 
     try:
         bill_date = _parse_trade_date(trade_date)
+        manual_closes = build_manual_index_closes(
+            close_nifty=close_nifty,
+            close_banknifty=close_banknifty,
+            close_finnifty=close_finnifty,
+            close_midcpnifty=close_midcpnifty,
+            close_niftynxt50=close_niftynxt50,
+            close_sensex=close_sensex,
+            close_bankex=close_bankex,
+        )
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
@@ -414,7 +471,11 @@ async def generate_admin(
                     expiry_settlement_rows,
                     expiry_settlement_total,
                     expiry_pending_rows,
-                ) = apply_expiry_settlement(net_subdf, bill_date)
+                ) = apply_expiry_settlement(
+                    net_subdf,
+                    bill_date,
+                    manual_closes=manual_closes,
+                )
                 positions_rows, positions_totals = build_positions(day_subdf)
                 charges, _ = compute_charges(
                     day_subdf,
