@@ -224,7 +224,7 @@ def test_closing_page_pdf_renders_unavailable_message() -> None:
 
     all_text = " ".join(_pdf_text_pages(pdf_bytes))
     assert "Closing Positions" in all_text
-    assert "Closing positions not available" in all_text
+    assert "No open positions." in all_text
     assert "Total Value of Closing Positions (Account-wise): 0.00" in all_text
 
 

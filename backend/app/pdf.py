@@ -157,11 +157,7 @@ def draw_closing_positions_page(
     y -= 7 * mm
 
     if status != "OK" or not rows:
-        message = (
-            "No open positions."
-            if status == "NO_OPEN_POSITIONS"
-            else "Closing positions not available (NETWISE missing / no matching data)."
-        )
+        message = "No open positions."
         c.setFont("Helvetica-Oblique", 10)
         c.drawString(left, y, message)
         y -= 10 * mm
@@ -856,7 +852,7 @@ def _format_optional_amount(value: object, decimals: int = 2) -> str:
 def _format_action_status(value: object) -> str:
     status = str(value or "").strip().upper()
     status_map = {
-        "MISSING_MANUAL_CLOSE": "Pending: Missing Manual Close",
+        "MISSING_MANUAL_CLOSE": "Pending: Missing Close",
         "MISSING_UNDERLYING_CLOSE": "Pending: Missing Underlying Close",
         "MISSING_STRIKE_PRICE": "Pending: Missing Strike Price",
         "EXPIRE_OTM": "Expired OTM",
@@ -886,7 +882,7 @@ def _format_verification(value: object) -> str:
 def _format_source(value: object) -> str:
     status = str(value or "").strip().upper()
     status_map = {
-        "MANUAL_INPUT": "Manual Input",
+        "MANUAL_INPUT": "MI",
     }
     if status in status_map:
         return status_map[status]
