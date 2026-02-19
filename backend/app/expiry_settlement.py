@@ -51,9 +51,9 @@ def apply_expiry_settlement(
     net_qty_col = _find_column(net_df, ["NetQty", "Net Qty"])
     trading_symbol_col = _find_column(net_df, ["TradingSymbol", "Trading Symbol"])
     strike_col = _find_column(net_df, ["Strike Price"])
-    lot_size_col = _find_column(net_df, ["Lot Size"])
+    lot_size_col = _find_column(net_df, ["LotSize", "Lot Size"])
     multiplier_col = _find_column(net_df, ["Multiplier"])
-    net_lot_col = _find_column(net_df, ["Net Lot", "Net Lots"])
+    net_lot_col = _find_column(net_df, ["NetLot", "Net Lot", "Net Lots", "NetLotQty"])
 
     parsed_expiry = net_df[expiry_col].map(parse_expiry)
     expired_on_bill_date_mask = parsed_expiry == bill_date
@@ -76,6 +76,12 @@ def apply_expiry_settlement(
         net_qty = _to_float(row.get(net_qty_col))
         if abs(net_qty) < 1e-9:
             continue
+        net_lot = _resolve_net_lot_for_display(
+            row=row,
+            net_qty=net_qty,
+            net_lot_col=net_lot_col,
+            lot_size_col=lot_size_col,
+        )
 
         trading_symbol = _as_str(
             row.get(trading_symbol_col) if trading_symbol_col else ""
@@ -91,6 +97,7 @@ def apply_expiry_settlement(
             "expiry": expiry_text,
             "option_type": option_type,
             "strike": strike_value,
+            "net_lot": net_lot,
             "net_qty": net_qty,
             "underlying_symbol": underlying_symbol,
             "close_date": bill_date.isoformat(),
@@ -190,6 +197,26 @@ def _resolve_multiplier(
         return lot_size
 
     return 1.0
+
+
+def _resolve_net_lot_for_display(
+    *,
+    row: pd.Series,
+    net_qty: float,
+    net_lot_col: Optional[str],
+    lot_size_col: Optional[str],
+) -> Optional[float]:
+    if net_lot_col:
+        net_lot = _to_float_or_none(row.get(net_lot_col))
+        if net_lot is not None:
+            return float(net_lot)
+
+    if lot_size_col:
+        lot_size = _to_float_or_none(row.get(lot_size_col))
+        if lot_size is not None and abs(lot_size) > 1e-9:
+            return float(net_qty) / float(lot_size)
+
+    return None
 
 
 def _find_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:

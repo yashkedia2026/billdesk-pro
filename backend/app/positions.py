@@ -2,6 +2,8 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
+from app.df_utils import normalize_optional_lot_columns
+
 
 NUMERIC_COLUMNS = [
     "BuyQty",
@@ -19,6 +21,7 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = cleaned.loc[
         :, [col for col in cleaned.columns if not str(col).startswith("Unnamed:")]
     ]
+    cleaned = normalize_optional_lot_columns(cleaned)
 
     if "TradingSymbol" in cleaned.columns:
         symbols = cleaned["TradingSymbol"].fillna("").astype(str).str.strip()

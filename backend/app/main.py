@@ -22,6 +22,7 @@ from app.admin_batch import (
 from app.charges import compute_charges
 from app.charges_edit import apply_user_edits, parse_json_list
 from app.closing_positions import build_closing_positions
+from app.expiry_lot_fee import compute_expiry_lot_fee
 from app.expiry_settlement import apply_expiry_settlement
 from app.manual_index_close import build_manual_index_closes
 from app.pdf import (
@@ -142,6 +143,9 @@ async def generate(
             bill_date,
             manual_closes=manual_closes,
         )
+        expiry_lot_fee, expiry_lot_fee_rows = compute_expiry_lot_fee(
+            netwise_df, bill_date
+        )
 
         positions_rows, positions_totals = build_positions(daywise_df)
         closing_rows, closing_total, closing_status = build_closing_positions(
@@ -157,6 +161,7 @@ async def generate(
             netwise_df,
             rate_card,
             expiry_settlement_total=expiry_settlement_total,
+            expiry_lot_fee=expiry_lot_fee,
             debug=debug,
         )
     except ValueError as exc:
@@ -197,6 +202,10 @@ async def generate(
                 "settlement_total": expiry_settlement_total,
                 "settlement_rows": expiry_settlement_rows,
                 "pending_rows": expiry_pending_rows,
+            },
+            "expiry_lot_fee": {
+                "total_fee": expiry_lot_fee,
+                "rows": expiry_lot_fee_rows,
             },
             "rate_card": {
                 "source": rate_card["source"],
@@ -295,11 +304,13 @@ async def preview(
             bill_date,
             manual_closes=manual_closes,
         )
+        expiry_lot_fee, _ = compute_expiry_lot_fee(netwise_df, bill_date)
         charges, _ = compute_charges(
             daywise_df,
             netwise_df,
             rate_card,
             expiry_settlement_total=expiry_settlement_total,
+            expiry_lot_fee=expiry_lot_fee,
             debug=False,
         )
     except ValueError as exc:
@@ -476,12 +487,17 @@ async def generate_admin(
                     bill_date,
                     manual_closes=manual_closes,
                 )
+                expiry_lot_fee, expiry_lot_fee_rows = compute_expiry_lot_fee(
+                    net_subdf,
+                    bill_date,
+                )
                 positions_rows, positions_totals = build_positions(day_subdf)
                 charges, _ = compute_charges(
                     day_subdf,
                     net_subdf,
                     rate_card,
                     expiry_settlement_total=expiry_settlement_total,
+                    expiry_lot_fee=expiry_lot_fee,
                     debug=False,
                 )
                 context = build_pdf_context(
@@ -521,6 +537,11 @@ async def generate_admin(
                     }
                 )
                 manifest["success"].append({"key": key, "pdf": filename})
+                if debug:
+                    manifest.setdefault("expiry_lot_fee_debug", {})[key] = {
+                        "total_fee": expiry_lot_fee,
+                        "rows": expiry_lot_fee_rows,
+                    }
                 manifest["counts"]["generated_pdfs"] += 1
                 accounts_bundle.append(
                     {

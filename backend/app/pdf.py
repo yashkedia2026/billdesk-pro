@@ -512,6 +512,7 @@ def _build_expiry_settlement_table(
 
     headers = [
         "Trading Symbol",
+        "Net Lot",
         "Net Qty",
         "Underlying Close",
         "Source",
@@ -525,6 +526,7 @@ def _build_expiry_settlement_table(
         data.append(
             [
                 str(row.get("trading_symbol", "")),
+                _format_net_lot(row.get("net_lot")),
                 _format_qty(row.get("net_qty")),
                 _format_optional_amount(row.get("underlying_close")),
                 _format_source(row.get("source")),
@@ -547,12 +549,13 @@ def _build_expiry_settlement_table(
                 "",
                 "",
                 "",
+                "",
                 "Total",
                 _format_amount(total_amount, 2),
             ]
         )
 
-    col_widths = _scale_widths([92, 24, 34, 28, 24, 48, 36], width)
+    col_widths = _scale_widths([90, 24, 24, 34, 24, 24, 50, 34], width)
     table = Table(data, colWidths=col_widths, repeatRows=1)
 
     style_rows = [
@@ -561,12 +564,11 @@ def _build_expiry_settlement_table(
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 7.0),
         ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-        ("ALIGN", (3, 0), (3, -1), "LEFT"),
-        ("ALIGN", (4, 0), (4, -1), "RIGHT"),
-        ("ALIGN", (5, 0), (5, -1), "LEFT"),
-        ("ALIGN", (6, 0), (6, -1), "RIGHT"),
+        ("ALIGN", (1, 0), (3, -1), "RIGHT"),
+        ("ALIGN", (4, 0), (4, -1), "LEFT"),
+        ("ALIGN", (5, 0), (5, -1), "RIGHT"),
+        ("ALIGN", (6, 0), (6, -1), "LEFT"),
+        ("ALIGN", (7, 0), (7, -1), "RIGHT"),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]
@@ -915,6 +917,21 @@ def _format_qty(value: object) -> str:
         return f"{int(round(float(value)))}"
     except (TypeError, ValueError):
         return "0"
+
+
+def _format_net_lot(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if numeric != numeric:  # NaN check
+        return ""
+    rounded = round(numeric, 2)
+    if abs(rounded - round(rounded)) < 1e-9:
+        return str(int(round(rounded)))
+    return f"{rounded:.2f}".rstrip("0").rstrip(".")
 
 
 def _scale_widths(weights: List[float], total_width: float) -> List[float]:

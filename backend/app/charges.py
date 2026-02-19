@@ -10,6 +10,7 @@ def compute_charges(
     rate_card: Dict,
     *,
     expiry_settlement_total: float = 0.0,
+    expiry_lot_fee: float = 0.0,
     debug: bool = False,
 ) -> Tuple[Dict, Dict]:
     (
@@ -108,7 +109,11 @@ def compute_charges(
     toc_nse = _round_to(abs(nfo_amounts["turnover"]), 2)
     toc_bse = _round_to(abs(bfo_amounts["turnover"]), 2)
 
-    raw_clearing = abs(nfo_amounts["clearing"]) + abs(bfo_amounts["clearing"])
+    raw_clearing = (
+        abs(nfo_amounts["clearing"])
+        + abs(bfo_amounts["clearing"])
+        + abs(float(expiry_lot_fee))
+    )
     raw_sebi = abs(nfo_amounts["sebi"]) + abs(bfo_amounts["sebi"])
     raw_stamp = abs(nfo_amounts["stamp"]) + abs(bfo_amounts["stamp"])
     raw_ipft = abs(ipft_amount)
@@ -162,6 +167,7 @@ def compute_charges(
         "net_amount": net_amount,
         "total_bill_amount": total_bill_amount,
         "expiry_settlement_total": _round2(float(expiry_settlement_total)),
+        "expiry_lot_fee": _round2(float(expiry_lot_fee)),
     }
 
     debug_payload = {
@@ -174,6 +180,7 @@ def compute_charges(
         debug_payload.update(
             {
                 "expiry_settlement_total": _round2(float(expiry_settlement_total)),
+                "expiry_lot_fee": _round2(float(expiry_lot_fee)),
                 "bill_aggregation": {
                     "raw": {
                         "clearing": _round6(raw_clearing),

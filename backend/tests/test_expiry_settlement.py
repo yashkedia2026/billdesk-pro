@@ -152,3 +152,29 @@ def test_closing_df_excludes_expired_rows_even_when_manual_close_is_present() ->
     assert len(settlement_rows) == 1
     assert pending_rows == []
     assert settlement_total == -3000.0
+
+
+def test_settlement_row_includes_net_lot_with_lotsize_fallback() -> None:
+    net_df = pd.DataFrame(
+        [
+            {
+                "TradingSymbol": "NIFTY 12FEB2026 CE 22000",
+                "NetQty": 150,
+                "Option Type": "CE",
+                "Strike Price": 22000,
+                "LotSize": 50,
+                "Expiry": "12Feb2026",
+            }
+        ]
+    )
+
+    _, settlement_rows, settlement_total, pending_rows = apply_expiry_settlement(
+        net_df,
+        date(2026, 2, 12),
+        manual_closes={"NIFTY": 22100.0},
+    )
+
+    assert pending_rows == []
+    assert len(settlement_rows) == 1
+    assert settlement_rows[0]["net_lot"] == 3.0
+    assert settlement_total == 15000.0

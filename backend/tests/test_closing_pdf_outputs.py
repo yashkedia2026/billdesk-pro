@@ -8,6 +8,7 @@ from reportlab.pdfgen import canvas
 from app.pdf import (
     render_admin_consolidated_pdf,
     render_admin_summary_pdf,
+    render_bill_pdf,
     render_closing_positions_pdf,
 )
 
@@ -264,3 +265,45 @@ def test_admin_summary_pdf_renders_totals_and_missing_note() -> None:
     assert "A2" in all_text and "-10.00" in all_text and "0.00" in all_text and "-10.00" in all_text
     assert "Total" in all_text and "90.00" in all_text and "130.00" in all_text
     assert "Closing adjustment computed only for accounts where netwise data was available." not in all_text
+
+
+def test_expiry_settlement_table_includes_net_lot_column() -> None:
+    context = {
+        "code": "PR01",
+        "exchange": "BSE_FO",
+        "market_type": "FO",
+        "trade_date_display": "12-02-2026",
+        "positions_rows": [],
+        "positions_totals": {
+            "total_buy_qty": 0,
+            "total_buy_amount": 0.0,
+            "total_sell_qty": 0,
+            "total_sell_amount": 0.0,
+            "total_net_amount": 0.0,
+        },
+        "total_net_qty": 0,
+        "expiry_settlement_rows": [
+            {
+                "trading_symbol": "SENSEX 12FEB2026 CE 84000",
+                "net_lot": -3.5,
+                "net_qty": -350,
+                "underlying_close": 84100.0,
+                "source": "MANUAL_INPUT",
+                "intrinsic": 100.0,
+                "action_status": "ASSIGN",
+                "settlement_amount": -35000.0,
+            }
+        ],
+        "expiry_pending_rows": [],
+        "expiry_settlement_total": -35000.0,
+        "expense_rows": [],
+        "total_expenses": 0.0,
+        "total_bill_amount": 0.0,
+    }
+
+    pdf_bytes = render_bill_pdf(context)
+    text = " ".join(_pdf_text_pages(pdf_bytes))
+
+    assert "Expiry Settlement (Exercise/Assignment)" in text
+    assert "Net Lot" in text
+    assert "-3.5" in text or "-3.50" in text
