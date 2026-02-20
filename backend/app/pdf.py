@@ -138,9 +138,6 @@ def draw_closing_positions_page(
     right = page_width - 12 * mm
     top = page_height - 12 * mm
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(left, top, "Closing Positions")
-
     account_code = str(
         account_meta.get("account_code")
         or account_meta.get("code")
@@ -149,12 +146,18 @@ def draw_closing_positions_page(
     ).strip()
     trade_date = _format_trade_date(account_meta.get("trade_date", ""))
 
-    y = top - 7 * mm
-    c.setFont("Helvetica", 9)
-    c.drawString(left, y, f"Account Id / User Id: {account_code or '-'}")
-    y -= 5 * mm
-    c.drawString(left, y, f"Trade Date: {trade_date}")
-    y -= 7 * mm
+    def _draw_page_header() -> float:
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(left, top, "Closing Positions")
+        y_header = top - 7 * mm
+        c.setFont("Helvetica", 9)
+        c.drawString(left, y_header, f"Account Id / User Id: {account_code or '-'}")
+        y_header -= 5 * mm
+        c.drawString(left, y_header, f"Trade Date: {trade_date}")
+        y_header -= 7 * mm
+        return y_header
+
+    y = _draw_page_header()
 
     if status != "OK" or not rows:
         message = "No open positions."
@@ -176,9 +179,10 @@ def draw_closing_positions_page(
         "LTP",
         "Value of Closing Position (LTP x Net Qty)",
     ]
-    table_data = [headers]
+    col_widths = _scale_widths([14, 74, 26, 22, 44], right - left)
+    body_rows: List[List[str]] = []
     for row in rows:
-        table_data.append(
+        body_rows.append(
             [
                 str(row.get("sr", "")),
                 str(row.get("contract", "")),
@@ -187,39 +191,87 @@ def draw_closing_positions_page(
                 _format_amount(row.get("value", 0), 2),
             ]
         )
-    table_data.append(
-        [
-            "",
-            "Total",
-            "",
-            "",
-            _format_amount(total_value, 2),
+
+    total_row = [
+        "",
+        "Total",
+        "",
+        "",
+        _format_amount(total_value, 2),
+    ]
+
+    def _build_table(chunk_rows: List[List[str]], include_total: bool) -> Table:
+        table_data = [headers] + chunk_rows
+        if include_total:
+            table_data.append(total_row)
+
+        table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        style_commands = [
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("ALIGN", (1, 0), (1, -1), "LEFT"),
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ]
-    )
+        if include_total:
+            style_commands.extend(
+                [
+                    ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efede2")),
+                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ]
+            )
+        table.setStyle(TableStyle(style_commands))
+        return table
 
-    col_widths = _scale_widths([14, 74, 26, 22, 44], right - left)
-    table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    table.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.black),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efede2")),
-                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#efede2")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("ALIGN", (0, 0), (0, -1), "CENTER"),
-                ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
+    remaining_rows = list(body_rows)
+    while remaining_rows:
+        available_height = max(20 * mm, y - 18 * mm)
 
-    available_height = max(20 * mm, y - 18 * mm)
-    _, height = table.wrap(right - left, available_height)
-    table.drawOn(c, left, y - height)
+        final_table = _build_table(remaining_rows, include_total=True)
+        _, final_height = final_table.wrap(right - left, available_height)
+        if final_height <= available_height:
+            final_table.drawOn(c, left, y - final_height)
+            return
+
+        max_chunk_rows = len(remaining_rows) - 1
+        chunk_count = 0
+        chunk_table: Optional[Table] = None
+        chunk_height = 0.0
+
+        if max_chunk_rows > 0:
+            low = 1
+            high = max_chunk_rows
+            while low <= high:
+                mid = (low + high) // 2
+                mid_table = _build_table(remaining_rows[:mid], include_total=False)
+                _, mid_height = mid_table.wrap(right - left, available_height)
+                if mid_height <= available_height:
+                    chunk_count = mid
+                    chunk_table = mid_table
+                    chunk_height = mid_height
+                    low = mid + 1
+                else:
+                    high = mid - 1
+
+        if chunk_count <= 0:
+            chunk_count = 1
+            chunk_table = _build_table(remaining_rows[:chunk_count], include_total=False)
+            _, chunk_height = chunk_table.wrap(right - left, available_height)
+            if chunk_height > available_height:
+                c.showPage()
+                y = _draw_page_header()
+                continue
+
+        chunk_table.drawOn(c, left, y - chunk_height)
+        remaining_rows = remaining_rows[chunk_count:]
+
+        if remaining_rows:
+            c.showPage()
+            y = _draw_page_header()
 
 
 def render_closing_positions_pdf(
