@@ -305,6 +305,27 @@
         flex-wrap: wrap;
       }
 
+      .external-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #1f4b99;
+        font-size: 17px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .external-link:hover {
+        color: #173a74;
+        text-decoration: underline;
+      }
+
+      .external-link-icon {
+        width: 14px;
+        height: 14px;
+        display: inline-block;
+      }
+
       .helper-text {
         margin: 6px 0 0;
         font-size: 13px;
@@ -705,6 +726,25 @@
         <div class="button-row">
           <button type="button" id="preview-btn" class="button-secondary">Preview Charges</button>
           <button type="submit" id="submit-btn">Generate PDF</button>
+          <a
+            class="external-link"
+            href="https://techxedu.vercel.app/login"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            ALPHA-TECH X
+            <svg
+              class="external-link-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                fill="currentColor"
+                d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zm5 16H5V5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7z"
+              />
+            </svg>
+          </a>
         </div>
         <p id="preview-note" class="helper-text" hidden>
           Preview is only available in single-account mode.
